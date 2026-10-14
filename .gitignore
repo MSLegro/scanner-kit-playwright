@@ -1,0 +1,35 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Compilación TypeScript
+dist/
+*.tsbuildinfo
+
+# Variables de entorno y secretos (NUNCA subir a GitHub)
+.env
+.env.local
+.env.*.local
+
+# Reportes y artefactos generados por escaneos
+session-backup.json
+recon-report.json
+*.log
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Archivos del sistema y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Directorios temporales de pruebas
+tmp/
+temp/

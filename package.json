@@ -1,0 +1,33 @@
+{
+  "name": "scanner-kit-playwright",
+  "version": "1.0.0",
+  "description": "Universal Web Reconnaissance and Automation Kit for Playwright & TypeScript",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "scan": "ts-node src/examples/run-scan.ts",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "playwright",
+    "rpa",
+    "reconnaissance",
+    "api-spy",
+    "automation",
+    "reverse-engineering",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^18.0.7",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}
