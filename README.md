@@ -77,7 +77,7 @@ graph TD
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/tu-usuario/scanner-kit-playwright.git
+git clone https://github.com/MSLegro/scanner-kit-playwright.git
 cd scanner-kit-playwright
 
 # 2. Instalar dependencias con pnpm (o npm)

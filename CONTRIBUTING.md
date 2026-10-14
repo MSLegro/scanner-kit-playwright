@@ -15,7 +15,7 @@ Este proyecto tiene como objetivo ser el kit de referencia en automatización RP
 
 2. Clona el repositorio e instala las dependencias:
    ```bash
-   git clone https://github.com/tu-usuario/scanner-kit-playwright.git
+   git clone https://github.com/MSLegro/scanner-kit-playwright.git
    cd scanner-kit-playwright
    pnpm install
    ```
