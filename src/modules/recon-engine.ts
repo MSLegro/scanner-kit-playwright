@@ -154,6 +154,7 @@ export class ReconEngine {
       if (detectedType) {
         const tokenKey = `${headerName}:${detectedType}`;
         let tokenRecord = this.securityTokensMap.get(tokenKey);
+        const isPlaceholder = rawValue.includes('undefined') || rawValue.includes('null');
 
         if (!tokenRecord) {
           // Ocultar parcialmente el valor por seguridad en reportes corporativos
@@ -165,6 +166,9 @@ export class ReconEngine {
             observedInEndpoints: []
           };
           this.securityTokensMap.set(tokenKey, tokenRecord);
+        } else if (tokenRecord.sampleValue.includes('undefined') && !isPlaceholder) {
+          // Reemplazar muestra preliminar/placeholder por el token real autenticado
+          tokenRecord.sampleValue = this.maskSensitiveString(rawValue);
         }
 
         if (!tokenRecord.observedInEndpoints.includes(requestUrl) && tokenRecord.observedInEndpoints.length < 15) {

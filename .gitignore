@@ -11,9 +11,11 @@ dist/
 .env.local
 .env.*.local
 
-# Reportes y artefactos generados por escaneos
+# Reportes y scripts locales de benchmark / escaneos
 session-backup.json
 recon-report.json
+benchmark-results.json
+src/examples/benchmark-*.ts
 *.log
 
 # Playwright

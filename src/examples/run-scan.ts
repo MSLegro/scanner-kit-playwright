@@ -23,13 +23,15 @@ async function main() {
   console.log('===============================================================\n');
 
   // Detección de socket gráfico real para compatibilidad
+  const isWindowsOrMac = process.platform === 'win32' || process.platform === 'darwin';
   const waylandSocket = process.env.XDG_RUNTIME_DIR && process.env.WAYLAND_DISPLAY
     ? path.join(process.env.XDG_RUNTIME_DIR, process.env.WAYLAND_DISPLAY)
     : null;
   const x11Socket = process.env.DISPLAY ? `/tmp/.X11-unix/X${process.env.DISPLAY.replace(':', '')}` : null;
   
-  const hasLiveDisplay = (waylandSocket && require('fs').existsSync(waylandSocket)) ||
-                         (x11Socket && require('fs').existsSync(x11Socket));
+  const hasLiveDisplay = isWindowsOrMac ||
+                         Boolean(waylandSocket && require('fs').existsSync(waylandSocket)) ||
+                         Boolean(x11Socket && require('fs').existsSync(x11Socket));
 
   const forceHeadless = process.argv.includes('--headless');
   const forceHeaded = process.argv.includes('--headed');
@@ -98,10 +100,9 @@ async function main() {
         console.log('  • Inicia sesión, navega entre módulos, llena formularios o haz clic.');
         console.log('  • ReconEngine está auditando cada llamada de red y token en tiempo real.');
         console.log('  • Modo Turbo y Evasión están protegiendo la navegación en segundo plano.\n');
-        console.log('👉 ¿Listo para guardar? Realiza cualquiera de estas 2 acciones:');
-        console.log('   1. Presiona [ENTER] aquí en la terminal al terminar tu flujo.');
-        console.log('   2. O simplemente cierra la ventana del navegador.');
-        console.log('---------------------------------------------------------------\n');
+        console.log('👉 ¿Listo para guardar sesión y reporte?');
+        console.log('   Presiona [ENTER] aquí en la terminal mientras la ventana sigue abierta.');
+        console.log('   (⚠️ Si cierras la ventana con la [X] del ratón, el navegador destruirá el DOM antes de extraer localStorage/sessionStorage).\n');
 
         // Esperar a que el usuario presione Enter O cierre la ventana del navegador
         await new Promise<void>((resolve) => {
