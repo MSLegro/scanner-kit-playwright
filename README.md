@@ -161,15 +161,20 @@ TARGET_CATEGORY=
 
 ### 1. Ejecutar un Escaneo de Descubrimiento (`pnpm scan`)
 
+Puedes pasar la URL objetivo (y opcionalmente una categoría) directamente en el comando sin necesidad de editar el `.env`:
+
 ```bash
+# Usando el flag --url=
+pnpm scan --url=https://mi-portal-objetivo.com/home
+
+# Especificando además una subcarpeta/categoría para el reporte
+pnpm scan --url=https://mi-portal-objetivo.com/home --category=autorizaciones
+
+# O tomando TARGET_URL directamente desde tu archivo .env
 pnpm scan
 ```
 
-También puedes indicar la URL objetivo directamente por CLI:
-
-```bash
-pnpm scan https://mi-portal-objetivo.com
-```
+*(También soporta `--url https://...`, `-u https://...` o la URL directa como argumento posicional).*
 
 **Flujo de trabajo recomendado:**
 1. Se abrirá el navegador en **Modo Observador Pasivo Sigiloso**.

@@ -54,8 +54,40 @@ async function main() {
     console.log('ℹ️ Entorno sin servidor gráfico accesible (sandbox/CI). Ejecutando en modo headless para garantizar estabilidad.');
   }
 
-  // 1. Detectar URL objetivo (Prioridad: Argumento CLI > TARGET_URL de .env > Servidor local de prueba)
-  const cliUrl = process.argv.slice(2).find((arg) => arg.startsWith('http://') || arg.startsWith('https://'));
+  // 1. Parser flexible de argumentos CLI (--url=..., --url ..., -u ..., --category=..., o URL posicional)
+  const rawArgs = process.argv.slice(2);
+  let cliUrl: string | undefined;
+  let cliCategory: string | undefined;
+
+  for (let i = 0; i < rawArgs.length; i++) {
+    const arg = rawArgs[i];
+    if (arg.startsWith('--url=') || arg.startsWith('--target=')) {
+      cliUrl = arg.split('=').slice(1).join('=').trim();
+    } else if ((arg === '--url' || arg === '-u' || arg === '--target') && rawArgs[i + 1]) {
+      cliUrl = rawArgs[++i].trim();
+    } else if (arg.startsWith('--category=') || arg.startsWith('--cat=')) {
+      cliCategory = arg.split('=').slice(1).join('=').trim();
+    } else if ((arg === '--category' || arg === '-c' || arg === '--cat') && rawArgs[i + 1]) {
+      cliCategory = rawArgs[++i].trim();
+    } else if (!arg.startsWith('-') && (arg.startsWith('http://') || arg.startsWith('https://'))) {
+      cliUrl = arg.trim();
+    }
+  }
+
+  // Fallback por si el gestor de paquetes (npm/pnpm) captura --url=... en npm_config_url
+  if (!cliUrl && process.env.npm_config_url && process.env.npm_config_url !== 'true') {
+    cliUrl = process.env.npm_config_url.trim();
+  }
+  if (!cliCategory && process.env.npm_config_category && process.env.npm_config_category !== 'true') {
+    cliCategory = process.env.npm_config_category.trim();
+  }
+
+  // Normalizar protocolo si el usuario pasó --url=dominio.com sin http(s)://
+  if (cliUrl && !/^https?:\/\//i.test(cliUrl)) {
+    const isLocalOrPrivateIp = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/i.test(cliUrl);
+    cliUrl = `${isLocalOrPrivateIp ? 'http' : 'https'}://${cliUrl}`;
+  }
+
   const envUrl = process.env.TARGET_URL?.trim();
   const customUrl = cliUrl || (envUrl ? envUrl : null);
 
@@ -64,13 +96,13 @@ async function main() {
 
   if (customUrl) {
     targetUrl = customUrl;
-    console.log(`[1/6] URL objetivo configurada (${cliUrl ? 'desde CLI' : 'desde .env'}): ${targetUrl}`);
+    console.log(`[1/6] URL objetivo configurada (${cliUrl ? 'desde CLI (--url)' : 'desde .env'}): ${targetUrl}`);
   } else {
     // Iniciar servidor de prueba local si no se definió URL externa
     server = new TestServer(3456);
     const serverUrl = await server.start();
     targetUrl = `${serverUrl}/portal`;
-    console.log(`[1/6] TARGET_URL vacío en .env. Usando servidor de simulación ERP local en: ${serverUrl}`);
+    console.log(`[1/6] Sin URL en CLI ni en .env. Usando servidor de simulación ERP local en: ${serverUrl}`);
   }
 
   // 2. Inicializar ScannerKit en Modo Observador Pasivo Cero-Intrusión
@@ -78,7 +110,7 @@ async function main() {
     `[2/6] Inicializando ScannerKit (headless: ${isHeadless}, modo: Observador Pasivo Cero-Intrusión)...`
   );
   const outputDir = process.env.OUTPUT_DIR || './output';
-  const targetCategory = process.env.TARGET_CATEGORY?.trim() || undefined;
+  const targetCategory = cliCategory || process.env.TARGET_CATEGORY?.trim() || undefined;
 
   const scanner = await ScannerKit.create({
     headless: isHeadless,
