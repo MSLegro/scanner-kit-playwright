@@ -41,10 +41,23 @@ export interface ScannerKitOptions {
   telemetryMode?: boolean;
 
   /**
-   * Directorio de salida para los artefactos exportados.
-   * Por defecto: process.cwd().
+   * Directorio base de salida para los artefactos exportados.
+   * Por defecto: './output'.
    */
   outputDir?: string;
+
+  /**
+   * Agrupar automáticamente los informes en subcarpetas por target (dominio / host / IP).
+   * Ejemplo: output/localhost_3456/ o output/172.16.1.93_49201/
+   * Por defecto: true.
+   */
+  groupByTarget?: boolean;
+
+  /**
+   * Subcarpeta o categoría opcional dentro del target para clasificar informes
+   * por objetivo o funcionalidad (ej. 'informes', 'login_flow', 'auditoria_hc').
+   */
+  targetCategory?: string;
 
   /**
    * Exportar automáticamente todos los artefactos de auditoría al invocar scanner.close().
@@ -66,6 +79,41 @@ export interface ScannerKitOptions {
    * Argumentos adicionales para el ejecutable de Chromium.
    */
   launchArgs?: string[];
+}
+
+/**
+ * Resultado de exportación consolidada de artefactos.
+ */
+export interface ExportArtifactsResult {
+  /**
+   * Directorio final donde se guardaron los artefactos generados.
+   */
+  outputDirectory: string;
+
+  /**
+   * Ruta al archivo de sesión empaquetada (session-backup.json).
+   */
+  sessionFile?: string;
+
+  /**
+   * Ruta al archivo de radiografía técnica y tokens (recon-report.json).
+   */
+  reconReportFile?: string;
+
+  /**
+   * Ruta a la secuencia cronológica de acciones y sugerencias RPA (execution-sequence.json).
+   */
+  sequenceFile?: string;
+
+  /**
+   * Ruta a la matriz de robustez de selectores (selectors-map.json).
+   */
+  selectorsFile?: string;
+
+  /**
+   * Ruta a los contratos de APIs XHR/Fetch descubiertos (api-contracts.json).
+   */
+  contractsFile?: string;
 }
 
 /**

@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import { Browser, BrowserContext, chromium, Locator, Page } from 'playwright';
 import { ApiSpy } from './modules/api-spy';
@@ -9,6 +10,7 @@ import { TelemetryExtractor } from './modules/telemetry-extractor';
 import { TurboManager, TurboOptions } from './modules/turbo-manager';
 import {
   ClickAndSpyOptions,
+  ExportArtifactsResult,
   MultiFrameElementResult,
   ReconReport,
   ScannerKitOptions,
@@ -271,6 +273,60 @@ export class ScannerKit {
   }
 
   /**
+   * Resuelve la ruta del directorio de salida agrupada por target (dominio / host / IP)
+   * y categoría opcional, asegurando nombres válidos y compatibles con el sistema de archivos (Windows / Linux).
+   *
+   * Ejemplo:
+   *   - Base: './output'
+   *   - URL: 'http://localhost:3456/portal'
+   *   - Resultado: 'C:/.../output/localhost_3456'
+   *   - Con categoría 'informes': 'C:/.../output/localhost_3456/informes'
+   *
+   * @param customDir Directorio base opcional (sobreescribe options.outputDir).
+   * @param customCategory Subcarpeta o categoría opcional (ej. 'informes', 'login_flow').
+   */
+  public resolveTargetOutputDir(customDir?: string, customCategory?: string): string {
+    const baseDir = path.resolve(customDir || this._options.outputDir || './output');
+    const shouldGroup = this._options.groupByTarget !== false;
+
+    if (!shouldGroup) {
+      if (!fs.existsSync(baseDir)) {
+        fs.mkdirSync(baseDir, { recursive: true });
+      }
+      return baseDir;
+    }
+
+    let targetName = 'default_target';
+    try {
+      const currentUrl = this._page ? this._page.url() : '';
+      if (currentUrl && currentUrl !== 'about:blank') {
+        const parsed = new URL(currentUrl);
+        if (parsed.port && parsed.port !== '80' && parsed.port !== '443') {
+          targetName = `${parsed.hostname}_${parsed.port}`;
+        } else if (parsed.hostname) {
+          targetName = parsed.hostname;
+        }
+      }
+    } catch {
+      targetName = 'unknown_target';
+    }
+
+    // Sanitizar caracteres inválidos para Windows / POSIX (: * ? " < > |)
+    const safeTargetName = targetName.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+    const category = customCategory || this._options.targetCategory;
+    const finalDir = category
+      ? path.join(baseDir, safeTargetName, category.replace(/[^a-zA-Z0-9._-]/g, '_'))
+      : path.join(baseDir, safeTargetName);
+
+    if (!fs.existsSync(finalDir)) {
+      fs.mkdirSync(finalDir, { recursive: true });
+    }
+
+    return finalDir;
+  }
+
+  /**
    * Exportador Integral de Auditoría e Ingeniería Inversa:
    * Empaqueta y guarda en disco todos los artefactos de telemetría y reconocimiento:
    * 1. session-backup.json (cookies, localStorage, sessionStorage)
@@ -279,23 +335,19 @@ export class ScannerKit {
    * 4. selectors-map.json (matriz de robustez y resiliencia de selectores Playwright)
    * 5. api-contracts.json (contratos y esquemas tipados de APIs XHR/Fetch)
    *
-   * @param outputDir Directorio de salida opcional (por defecto options.outputDir o './').
+   * Los archivos se agrupan automáticamente en carpetas por target (ej: output/localhost_3456/).
+   *
+   * @param outputDir Directorio de salida opcional (por defecto options.outputDir o './output').
+   * @param category Subcarpeta o categoría opcional (ej. 'informes').
    */
-  public async exportAllArtifacts(outputDir?: string): Promise<{
-    sessionFile?: string;
-    reconReportFile?: string;
-    sequenceFile?: string;
-    selectorsFile?: string;
-    contractsFile?: string;
-  }> {
-    const targetDir = path.resolve(outputDir || this._options.outputDir || process.cwd());
-    const results: {
-      sessionFile?: string;
-      reconReportFile?: string;
-      sequenceFile?: string;
-      selectorsFile?: string;
-      contractsFile?: string;
-    } = {};
+  public async exportAllArtifacts(
+    outputDir?: string,
+    category?: string
+  ): Promise<ExportArtifactsResult> {
+    const targetDir = this.resolveTargetOutputDir(outputDir, category);
+    const results: ExportArtifactsResult = {
+      outputDirectory: targetDir
+    };
 
     console.log(`\n[ScannerKit] 📦 Consolidando y exportando artefactos en: ${targetDir}`);
 

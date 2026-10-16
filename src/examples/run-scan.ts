@@ -73,12 +73,17 @@ async function main() {
 
   // 2. Inicializar ScannerKit con la configuración de .env
   console.log(`[2/6] Inicializando ScannerKit (headless: ${isHeadless}, turboMode: ${turboMode}, evasionMode: ${evasionMode})...`);
+  const outputDir = process.env.OUTPUT_DIR || './output';
+  const targetCategory = process.env.TARGET_CATEGORY?.trim() || undefined;
+
   const scanner = await ScannerKit.create({
     headless: isHeadless,
     slowMo: isHeadless ? 0 : slowMo,
     turboMode,
     evasionMode,
     reconMode,
+    outputDir,
+    targetCategory,
     viewport: { width: 1280, height: 720 }
   });
 
@@ -191,24 +196,21 @@ async function main() {
     console.log('\n[6/6] Generando artefactos integrales de auditoría, telemetría e ingeniería inversa...');
 
     const artifacts = await scanner.exportAllArtifacts();
+    console.log(`\n  📍 Artefactos agrupados por target en: ${artifacts.outputDirectory}`);
 
     // 1. Sesión
-    const sessionFilePath = process.env.SESSION_BACKUP_PATH || './session-backup.json';
-    const sessionFile = path.resolve(process.cwd(), sessionFilePath);
-    if (fs.existsSync(sessionFile)) {
-      const session = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'));
-      console.log(`\n  📁 [1/5] Sesión empaquetada en: ${sessionFile}`);
+    if (artifacts.sessionFile && fs.existsSync(artifacts.sessionFile)) {
+      const session = JSON.parse(fs.readFileSync(artifacts.sessionFile, 'utf-8'));
+      console.log(`\n  📁 [1/5] Sesión empaquetada en: ${artifacts.sessionFile}`);
       console.log(`    - Cookies: ${session.cookies?.length || 0}`);
       console.log(`    - LocalStorage keys: ${Object.keys(session.localStorage || {}).length}`);
       console.log(`    - SessionStorage keys: ${Object.keys(session.sessionStorage || {}).length}`);
     }
 
     // 2. Radiografía técnica (ReconEngine)
-    const reconFilePath = process.env.RECON_REPORT_PATH || './recon-report.json';
-    const reconFile = path.resolve(process.cwd(), reconFilePath);
-    if (fs.existsSync(reconFile)) {
-      const recon = JSON.parse(fs.readFileSync(reconFile, 'utf-8'));
-      console.log(`\n  📁 [2/5] Radiografía técnica guardada en: ${reconFile}`);
+    if (artifacts.reconReportFile && fs.existsSync(artifacts.reconReportFile)) {
+      const recon = JSON.parse(fs.readFileSync(artifacts.reconReportFile, 'utf-8'));
+      console.log(`\n  📁 [2/5] Radiografía técnica guardada en: ${artifacts.reconReportFile}`);
       console.log(`    - Peticiones HTTP totales capturadas: ${recon.summary?.totalRequestsCaptured || 0}`);
       console.log(`    - Endpoints catalogados: ${recon.summary?.totalEndpointsDiscovered || 0}`);
       console.log(`    - Tokens de seguridad identificados: ${recon.summary?.totalSecurityTokensIdentified || 0}`);
@@ -220,10 +222,9 @@ async function main() {
     }
 
     // 3. Secuencia de Ejecución y Rutas Directas (TelemetryExtractor)
-    const sequenceFile = path.resolve(process.cwd(), 'execution-sequence.json');
-    if (fs.existsSync(sequenceFile)) {
-      const seq = JSON.parse(fs.readFileSync(sequenceFile, 'utf-8'));
-      console.log(`\n  📁 [3/5] Secuencia de ejecución en: ${sequenceFile}`);
+    if (artifacts.sequenceFile && fs.existsSync(artifacts.sequenceFile)) {
+      const seq = JSON.parse(fs.readFileSync(artifacts.sequenceFile, 'utf-8'));
+      console.log(`\n  📁 [3/5] Secuencia de ejecución en: ${artifacts.sequenceFile}`);
       console.log(`    - Acciones de usuario registradas: ${seq.totalActionsCaptured || 0}`);
       console.log(`    - Rutas SPA navegables descubiertas: ${seq.uniqueRoutesDiscovered || 0}`);
       if (seq.routeDirectNavigations?.length > 0) {
@@ -235,10 +236,9 @@ async function main() {
     }
 
     // 4. Mapa de Selectores y Robustez
-    const selectorsFile = path.resolve(process.cwd(), 'selectors-map.json');
-    if (fs.existsSync(selectorsFile)) {
-      const selMap = JSON.parse(fs.readFileSync(selectorsFile, 'utf-8'));
-      console.log(`\n  📁 [4/5] Mapa de robustez de selectores en: ${selectorsFile}`);
+    if (artifacts.selectorsFile && fs.existsSync(artifacts.selectorsFile)) {
+      const selMap = JSON.parse(fs.readFileSync(artifacts.selectorsFile, 'utf-8'));
+      console.log(`\n  📁 [4/5] Mapa de robustez de selectores en: ${artifacts.selectorsFile}`);
       console.log(`    - Selectores únicos analizados: ${selMap.totalSelectorsAnalyzed || 0}`);
       console.log(
         `    - Calidad: Excelente: ${selMap.robustnessSummary?.excellentCount || 0} | Alta: ${selMap.robustnessSummary?.highCount || 0} | Media: ${selMap.robustnessSummary?.mediumCount || 0} | Frágil: ${selMap.robustnessSummary?.fragileCount || 0}`
@@ -246,10 +246,9 @@ async function main() {
     }
 
     // 5. Contratos de API XHR/Fetch
-    const contractsFile = path.resolve(process.cwd(), 'api-contracts.json');
-    if (fs.existsSync(contractsFile)) {
-      const contracts = JSON.parse(fs.readFileSync(contractsFile, 'utf-8'));
-      console.log(`\n  📁 [5/5] Contratos y esquemas de API en: ${contractsFile}`);
+    if (artifacts.contractsFile && fs.existsSync(artifacts.contractsFile)) {
+      const contracts = JSON.parse(fs.readFileSync(artifacts.contractsFile, 'utf-8'));
+      console.log(`\n  📁 [5/5] Contratos y esquemas de API en: ${artifacts.contractsFile}`);
       console.log(`    - Contratos de microservicios descubiertos: ${contracts.totalContractsDiscovered || 0}`);
     }
 

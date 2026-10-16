@@ -32,13 +32,15 @@ async function runVerification() {
     // -----------------------------------------------------------------
     // TEST 1 & 2: TelemetryExtractor + RouteTracker + Exportación
     // -----------------------------------------------------------------
-    console.log('\n--- [TEST 1 & 2] TelemetryExtractor & RouteTracker ---');
+    console.log('\n--- [TEST 1 & 2] TelemetryExtractor, RouteTracker & Target-Grouped Output ---');
     const scanner = await ScannerKit.create({
       headless: true,
       telemetryMode: true,
       reconMode: true,
       outputDir: testOutputDir,
-      autoExportOnClose: true
+      groupByTarget: true,
+      targetCategory: 'informes',
+      autoExportOnClose: false
     });
 
     // Navegar a la aplicación
@@ -59,14 +61,19 @@ async function runVerification() {
     });
     await scanner.page.waitForTimeout(300);
 
-    // Exportar artefactos explícitamente y verificar
-    console.log('\n  -> Exportando todos los artefactos a:', testOutputDir);
-    await scanner.exportAllArtifacts(testOutputDir);
+    // Exportar artefactos explícitamente y verificar agrupación por target
+    console.log('\n  -> Exportando todos los artefactos agrupados por target...');
+    const artifacts = await scanner.exportAllArtifacts();
 
     // Cerrar scanner
     await scanner.close();
 
-    // Validar archivos generados
+    console.log(`  ✓ Directorio de salida resuelto: ${artifacts.outputDirectory}`);
+    if (!artifacts.outputDirectory.includes('localhost_3987') || !artifacts.outputDirectory.includes('informes')) {
+      throw new Error(`[FAIL] El directorio de salida no agrupó por target/categoría: ${artifacts.outputDirectory}`);
+    }
+
+    // Validar archivos generados dentro de la carpeta del target
     const expectedFiles = [
       'execution-sequence.json',
       'selectors-map.json',
@@ -76,16 +83,16 @@ async function runVerification() {
     ];
 
     for (const f of expectedFiles) {
-      const fullPath = path.join(testOutputDir, f);
+      const fullPath = path.join(artifacts.outputDirectory, f);
       if (!fs.existsSync(fullPath)) {
-        throw new Error(`[FAIL] No se generó el archivo esperado: ${f}`);
+        throw new Error(`[FAIL] No se generó el archivo esperado en la subcarpeta del target: ${f}`);
       }
       const stats = fs.statSync(fullPath);
-      console.log(`  ✓ ${f} verificado (${stats.size} bytes)`);
+      console.log(`  ✓ ${f} verificado en ${artifacts.outputDirectory} (${stats.size} bytes)`);
     }
 
     // Validar contenido de execution-sequence.json
-    const seqData = JSON.parse(fs.readFileSync(path.join(testOutputDir, 'execution-sequence.json'), 'utf-8'));
+    const seqData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'execution-sequence.json'), 'utf-8'));
     console.log(`  ✓ execution-sequence.json: ${seqData.actions.length} acciones capturadas`);
     if (seqData.routeDirectNavigations.length > 0) {
       console.log(`  ✓ RouteTracker detectó ruta directa: "${seqData.routeDirectNavigations[0].route}"`);
@@ -93,12 +100,12 @@ async function runVerification() {
     }
 
     // Validar contenido de selectors-map.json
-    const selData = JSON.parse(fs.readFileSync(path.join(testOutputDir, 'selectors-map.json'), 'utf-8'));
+    const selData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'selectors-map.json'), 'utf-8'));
     console.log(`  ✓ selectors-map.json: ${selData.totalSelectorsAnalyzed} selectores analizados`);
     console.log(`    Distribución de robustez:`, selData.robustnessSummary);
 
     // Validar contenido de api-contracts.json
-    const apiData = JSON.parse(fs.readFileSync(path.join(testOutputDir, 'api-contracts.json'), 'utf-8'));
+    const apiData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'api-contracts.json'), 'utf-8'));
     console.log(`  ✓ api-contracts.json: ${apiData.totalContractsDiscovered} contratos descubiertos`);
     if (apiData.contracts.length > 0) {
       console.log(`    Endpoint interceptado: ${apiData.contracts[0].method} ${apiData.contracts[0].pathname}`);
@@ -112,7 +119,7 @@ async function runVerification() {
     // Servidor mock que simula un 401 la primera vez y 200 tras renovar token
     let authAttempts = 0;
     let reloginCalls = 0;
-    const testSessionFile = path.join(testOutputDir, 'session-backup.json');
+    const testSessionFile = artifacts.sessionFile || path.join(testOutputDir, 'session-backup.json');
 
     const apiServer = http.createServer((req, res) => {
       const authHeader = req.headers['authorization'];
