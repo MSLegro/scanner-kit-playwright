@@ -8,6 +8,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "scan": "ts-node src/examples/run-scan.ts",
+    "verify": "ts-node src/examples/verify-suite.ts",
     "prepublishOnly": "pnpm build"
   },
   "keywords": [

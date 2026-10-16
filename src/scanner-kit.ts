@@ -1,9 +1,11 @@
+import * as path from 'path';
 import { Browser, BrowserContext, chromium, Locator, Page } from 'playwright';
 import { ApiSpy } from './modules/api-spy';
 import { EvasionManager, EvasionOptions } from './modules/evasion-manager';
 import { FindFrameOptions, FrameExplorer } from './modules/frame-explorer';
 import { ReconEngine } from './modules/recon-engine';
 import { SessionManager } from './modules/session-manager';
+import { TelemetryExtractor } from './modules/telemetry-extractor';
 import { TurboManager, TurboOptions } from './modules/turbo-manager';
 import {
   ClickAndSpyOptions,
@@ -28,6 +30,7 @@ export class ScannerKit {
   private _turboManager?: TurboManager;
   private _evasionManager?: EvasionManager;
   private _reconEngine?: ReconEngine;
+  private _telemetryExtractor?: TelemetryExtractor;
   private _options: ScannerKitOptions;
 
   private constructor(
@@ -37,7 +40,8 @@ export class ScannerKit {
     options: ScannerKitOptions,
     turboManager?: TurboManager,
     evasionManager?: EvasionManager,
-    reconEngine?: ReconEngine
+    reconEngine?: ReconEngine,
+    telemetryExtractor?: TelemetryExtractor
   ) {
     this._browser = browser;
     this._context = context;
@@ -46,6 +50,7 @@ export class ScannerKit {
     this._turboManager = turboManager;
     this._evasionManager = evasionManager;
     this._reconEngine = reconEngine;
+    this._telemetryExtractor = telemetryExtractor;
   }
 
   /**
@@ -139,7 +144,15 @@ export class ScannerKit {
       reconEngine.attachToPage(page);
     }
 
-    return new ScannerKit(browser, context, page, options, turboManager, evasionManager, reconEngine);
+    // 8. Configurar TelemetryExtractor (acciones, selectores, contratos API, route tracker)
+    const telemetryMode = options.telemetryMode ?? true;
+    let telemetryExtractor: TelemetryExtractor | undefined;
+    if (telemetryMode) {
+      telemetryExtractor = new TelemetryExtractor();
+      await telemetryExtractor.attach(page, context);
+    }
+
+    return new ScannerKit(browser, context, page, options, turboManager, evasionManager, reconEngine, telemetryExtractor);
   }
 
   // --- Accesores Principales ---
@@ -158,6 +171,10 @@ export class ScannerKit {
 
   public get reconEngine(): ReconEngine | undefined {
     return this._reconEngine;
+  }
+
+  public get telemetry(): TelemetryExtractor | undefined {
+    return this._telemetryExtractor;
   }
 
   // --- Funcionalidades Nativas ---
@@ -184,6 +201,9 @@ export class ScannerKit {
     }
     if (this._reconEngine) {
       this._reconEngine.attachToPage(page);
+    }
+    if (this._telemetryExtractor) {
+      await this._telemetryExtractor.attach(page, this._context);
     }
     return page;
   }
@@ -251,9 +271,91 @@ export class ScannerKit {
   }
 
   /**
-   * Cierra de forma ordenada la página, el contexto y la instancia de Chromium.
+   * Exportador Integral de Auditoría e Ingeniería Inversa:
+   * Empaqueta y guarda en disco todos los artefactos de telemetría y reconocimiento:
+   * 1. session-backup.json (cookies, localStorage, sessionStorage)
+   * 2. recon-report.json (radiografía técnica de red y tokens)
+   * 3. execution-sequence.json (orden cronológico de acciones del usuario y sugerencias de rutas)
+   * 4. selectors-map.json (matriz de robustez y resiliencia de selectores Playwright)
+   * 5. api-contracts.json (contratos y esquemas tipados de APIs XHR/Fetch)
+   *
+   * @param outputDir Directorio de salida opcional (por defecto options.outputDir o './').
    */
-  public async close(): Promise<void> {
+  public async exportAllArtifacts(outputDir?: string): Promise<{
+    sessionFile?: string;
+    reconReportFile?: string;
+    sequenceFile?: string;
+    selectorsFile?: string;
+    contractsFile?: string;
+  }> {
+    const targetDir = path.resolve(outputDir || this._options.outputDir || process.cwd());
+    const results: {
+      sessionFile?: string;
+      reconReportFile?: string;
+      sequenceFile?: string;
+      selectorsFile?: string;
+      contractsFile?: string;
+    } = {};
+
+    console.log(`\n[ScannerKit] 📦 Consolidando y exportando artefactos en: ${targetDir}`);
+
+    // 1. Respaldo de Sesión
+    try {
+      const sessionPath = path.join(targetDir, 'session-backup.json');
+      await this.exportSession(sessionPath);
+      results.sessionFile = sessionPath;
+    } catch (e) {
+      console.warn('[ScannerKit] No se pudo exportar sesión:', (e as Error).message);
+    }
+
+    // 2. Radiografía Técnica (ReconEngine)
+    if (this._reconEngine) {
+      try {
+        const reconPath = path.join(targetDir, 'recon-report.json');
+        this.generateReconReport(reconPath);
+        results.reconReportFile = reconPath;
+      } catch (e) {
+        console.warn('[ScannerKit] No se pudo exportar reporte de reconocimiento:', (e as Error).message);
+      }
+    }
+
+    // 3. Telemetría Avanzada (Secuencia, Selectores, Contratos de API)
+    if (this._telemetryExtractor) {
+      try {
+        const sequencePath = path.join(targetDir, 'execution-sequence.json');
+        const selectorsPath = path.join(targetDir, 'selectors-map.json');
+        const contractsPath = path.join(targetDir, 'api-contracts.json');
+
+        this._telemetryExtractor.generateExecutionSequence(sequencePath);
+        this._telemetryExtractor.generateSelectorsMap(selectorsPath);
+        this._telemetryExtractor.generateApiContracts(contractsPath);
+
+        results.sequenceFile = sequencePath;
+        results.selectorsFile = selectorsPath;
+        results.contractsFile = contractsPath;
+      } catch (e) {
+        console.warn('[ScannerKit] No se pudo exportar telemetría:', (e as Error).message);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Cierra de forma ordenada la página, el contexto y la instancia de Chromium.
+   * Por defecto, finaliza y exporta automáticamente todos los artefactos pendientes
+   * a la carpeta de salida antes de liberar los recursos del navegador.
+   *
+   * @param options Opciones de cierre (permite deshabilitar autoExport).
+   */
+  public async close(options?: { exportArtifacts?: boolean }): Promise<void> {
+    const shouldExport = options?.exportArtifacts ?? (this._options.autoExportOnClose !== false);
+    if (shouldExport) {
+      await this.exportAllArtifacts().catch((err) => {
+        console.warn('[ScannerKit] Advertencia en auto-exportación de artefactos:', err);
+      });
+    }
+
     try {
       await this._page.close().catch(() => {});
       await this._context.close().catch(() => {});

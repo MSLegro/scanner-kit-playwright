@@ -93,6 +93,9 @@ export class TestServer {
                 <!-- Imagen pesada para prueba de Modo Turbo -->
                 <img src="/heavy-banner.jpg" alt="Banner que será bloqueado por TurboMode" style="max-height: 40px; display: block; margin-bottom: 15px;" />
 
+                <!-- Campo de búsqueda para prueba de telemetría de inputs -->
+                <input id="search-query" type="text" placeholder="Buscar registros..." style="padding: 8px; margin-bottom: 12px; width: 250px; display: block;" />
+
                 <!-- Botón de consulta que dispara API con cabeceras de autorización -->
                 <button id="btn-fetch-invoices">Consultar Facturas del Backend (API XHR)</button>
                 <div id="api-output" style="margin-top: 15px; font-family: monospace; background: #eee; padding: 10px; display: none;"></div>

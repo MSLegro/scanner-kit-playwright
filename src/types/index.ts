@@ -34,6 +34,25 @@ export interface ScannerKitOptions {
   reconMode?: boolean;
 
   /**
+   * Activar extractor de telemetría de acciones de usuario, robustez de selectores
+   * y contratos de APIs XHR/Fetch.
+   * Por defecto: true.
+   */
+  telemetryMode?: boolean;
+
+  /**
+   * Directorio de salida para los artefactos exportados.
+   * Por defecto: process.cwd().
+   */
+  outputDir?: string;
+
+  /**
+   * Exportar automáticamente todos los artefactos de auditoría al invocar scanner.close().
+   * Por defecto: true.
+   */
+  autoExportOnClose?: boolean;
+
+  /**
    * User-Agent personalizado.
    */
   userAgent?: string;
@@ -206,3 +225,178 @@ export interface ReconReport {
   endpoints: DiscoveredEndpoint[];
   domainsContacted: string[];
 }
+
+/**
+ * Registro de acción cronológica del usuario en la interfaz.
+ */
+export interface UserActionRecord {
+  id: string;
+  timestamp: string;
+  actionType: 'click' | 'input' | 'navigation' | 'url_change';
+  url: string;
+  target?: {
+    tag: string;
+    id?: string;
+    name?: string;
+    text?: string;
+    ariaLabel?: string;
+    role?: string;
+    placeholder?: string;
+    dataTestId?: string;
+    classes?: string[];
+    cssPath?: string;
+    xpath?: string;
+  };
+  valuePreview?: string;
+  suggestedLocator?: string;
+  stabilityScore?: number;
+  routeSuggestion?: {
+    route: string;
+    directRoutable: boolean;
+    recommendedGoto: string;
+    reason: string;
+  };
+}
+
+/**
+ * Reporte de secuencia de ejecución cronológica del usuario.
+ */
+export interface ExecutionSequenceReport {
+  generatedAt: string;
+  totalActionsCaptured: number;
+  uniqueRoutesDiscovered: number;
+  actions: UserActionRecord[];
+  routeDirectNavigations: RouteTrackerRecord[];
+}
+
+/**
+ * Candidato de selector evaluado para un elemento.
+ */
+export interface SelectorCandidate {
+  type: 'data-testid' | 'id' | 'role' | 'aria' | 'placeholder' | 'text' | 'css' | 'xpath';
+  selector: string;
+  score: number;
+  reason: string;
+}
+
+/**
+ * Entrada en el mapa de robustez de selectores.
+ */
+export interface SelectorMapEntry {
+  selectorKey: string;
+  elementDescription: string;
+  tagName: string;
+  recommendedLocator: string;
+  stabilityScore: number;
+  reliabilityTier: 'EXCELLENT' | 'HIGH' | 'MEDIUM' | 'FRAGILE';
+  candidates: SelectorCandidate[];
+  interactionCount: number;
+  lastObservedUrl: string;
+}
+
+/**
+ * Reporte de mapa de selectores y análisis de estabilidad.
+ */
+export interface SelectorsMapReport {
+  generatedAt: string;
+  totalSelectorsAnalyzed: number;
+  robustnessSummary: {
+    excellentCount: number;
+    highCount: number;
+    mediumCount: number;
+    fragileCount: number;
+  };
+  selectors: Record<string, SelectorMapEntry>;
+}
+
+/**
+ * Contrato de endpoint de API XHR/Fetch interceptado.
+ */
+export interface ApiContractEndpoint {
+  endpointKey: string;
+  method: string;
+  url: string;
+  pathname: string;
+  origin: string;
+  queryParams: Record<string, string>;
+  requestHeaders: Record<string, string>;
+  requestPayloadSample?: unknown;
+  requestSchema?: Record<string, string>;
+  responseStatus: number;
+  responseHeaders: Record<string, string>;
+  responsePayloadSample?: unknown;
+  responseSchema?: Record<string, string>;
+  averageLatencyMs: number;
+  callCount: number;
+}
+
+/**
+ * Reporte consolidado de contratos de API XHR/Fetch.
+ */
+export interface ApiContractsReport {
+  generatedAt: string;
+  totalContractsDiscovered: number;
+  contracts: ApiContractEndpoint[];
+}
+
+/**
+ * Registro de ruta SPA descubierta y evaluación de navegación directa.
+ */
+export interface RouteTrackerRecord {
+  route: string;
+  fullUrl: string;
+  directRoutable: boolean;
+  recommendedGoto: string;
+  detectedVia: 'framenavigated' | 'hashchange' | 'pushstate' | 'direct_goto';
+  firstObservedAt: string;
+}
+
+/**
+ * Opciones para configurar el SessionRefresher Anti-401.
+ */
+export interface SessionRefresherOptions {
+  /**
+   * URL base de la API (opcional, ej. 'http://172.16.1.93:49200').
+   */
+  baseUrl?: string;
+
+  /**
+   * Ruta al archivo session-backup.json o storageState.json.
+   * Por defecto: './session-backup.json'.
+   */
+  sessionBackupPath?: string;
+
+  /**
+   * Token inicial en memoria (opcional).
+   */
+  initialToken?: string;
+
+  /**
+   * Función para extraer el token JWT desde el objeto de respaldo de sesión.
+   */
+  tokenExtractor?: (session: SessionBackup) => string | null;
+
+  /**
+   * Manejador de re-login silencioso cuando se detecta un 401 o 403.
+   * Debe actualizar la sesión y retornar el nuevo token JWT válido.
+   */
+  reloginHandler?: () => Promise<string>;
+
+  /**
+   * Número máximo de reintentos automáticos tras re-login.
+   * Por defecto: 2.
+   */
+  maxRetries?: number;
+
+  /**
+   * Delay inicial en milisegundos entre reintentos con backoff.
+   * Por defecto: 500 ms.
+   */
+  retryDelayMs?: number;
+
+  /**
+   * Callback invocado cuando la sesión se renueva exitosamente.
+   */
+  onSessionRefreshed?: (newToken: string) => void | Promise<void>;
+}
+

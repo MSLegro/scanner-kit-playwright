@@ -71,6 +71,27 @@ graph TD
 - Clasifica endpoints REST y microservicios (métodos, query params, status codes, content-types y payloads de muestra).
 - Identifica y enmascara tokens de seguridad (`Bearer JWT`, `Basic`, `X-CSRF-Token`, `API-Key`).
 
+### 7. 🎬 Telemetry Extractor & Secuencia de Acciones (`execution-sequence.json`)
+- Registra el orden cronológico estricto de todas las acciones del usuario (clics, inputs con valores enmascarados, cambios de ruta SPA).
+- Cruza cada acción con la URL activa y el elemento objetivo para reconstruir flujos de RPA idénticos.
+
+### 8. 🛡️ Matriz de Robustez de Selectores (`selectors-map.json`)
+- Analiza cada elemento interactuado en la página y evalúa su resistencia a cambios en el DOM.
+- Clasifica los selectores en niveles de fiabilidad: `EXCELLENT` (`data-testid`), `HIGH` (roles ARIA, IDs estáticos, placeholders), `MEDIUM` (texto visible, clases CSS) y `FRAGILE` (XPaths estructurales).
+- Recomienda la sintaxis de Playwright Locator óptima para cada elemento (`page.getByRole`, `page.getByTestId`, etc.).
+
+### 9. 📜 Contratos y Esquemas de API XHR/Fetch (`api-contracts.json`)
+- Intercepta llamadas REST asíncronas disparadas por la interfaz.
+- Captura payloads de petición, cabeceras relevantes, códigos de respuesta, latencia media de backend y **deduce automáticamente el esquema JSON tipado** de cada endpoint.
+
+### 10. 🧭 Route Tracker (Navegación Directa para RPA)
+- Detecta navegación SPA basada en hashes o URLs profundas (`framenavigated`, `hashchange`).
+- Evalúa qué vistas soportan apertura directa (`page.goto`), sugiriendo la línea de código exacta para que los bots eviten clics lentos en menús y submenús anidados.
+
+### 11. 🔄 Session Refresher Anti-401 / Anti-403 (`SessionRefresher`)
+- Wrapper HTTP para consumo de microservicios con inyección automática de tokens JWT.
+- Si un endpoint responde `401 Unauthorized` o `403 Forbidden`, ejecuta un **re-login silencioso en segundo plano con control de concurrencia (Mutex)**, actualiza el archivo de sesión (`session-backup.json`) y reintenta la petición original automáticamente.
+
 ---
 
 ## 📦 Instalación

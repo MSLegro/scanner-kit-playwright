@@ -1,5 +1,6 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 import { ScannerKit } from '../scanner-kit';
 import { TestServer } from './test-server';
 
@@ -186,30 +187,70 @@ async function main() {
       console.log('    - Muestra de datos:', JSON.stringify(spyResult.data.records[0]));
     }
 
-    // 6. Exportar Sesión y Reporte de Reconocimiento
-    console.log('\n[6/6] Generando artefactos de auditoría e ingeniería inversa...');
+    // 6. Exportar Sesión, Radiografía y Telemetría Completa
+    console.log('\n[6/6] Generando artefactos integrales de auditoría, telemetría e ingeniería inversa...');
 
+    const artifacts = await scanner.exportAllArtifacts();
+
+    // 1. Sesión
     const sessionFilePath = process.env.SESSION_BACKUP_PATH || './session-backup.json';
     const sessionFile = path.resolve(process.cwd(), sessionFilePath);
-    const session = await scanner.exportSession(sessionFile);
-    console.log(`  ✓ Sesión empaquetada en: ${sessionFile}`);
-    console.log(`    - Cookies: ${session.cookies.length}`);
-    console.log(`    - LocalStorage keys: ${Object.keys(session.localStorage).length}`);
-    console.log(`    - SessionStorage keys: ${Object.keys(session.sessionStorage).length}`);
+    if (fs.existsSync(sessionFile)) {
+      const session = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'));
+      console.log(`\n  📁 [1/5] Sesión empaquetada en: ${sessionFile}`);
+      console.log(`    - Cookies: ${session.cookies?.length || 0}`);
+      console.log(`    - LocalStorage keys: ${Object.keys(session.localStorage || {}).length}`);
+      console.log(`    - SessionStorage keys: ${Object.keys(session.sessionStorage || {}).length}`);
+    }
 
+    // 2. Radiografía técnica (ReconEngine)
     const reconFilePath = process.env.RECON_REPORT_PATH || './recon-report.json';
     const reconFile = path.resolve(process.cwd(), reconFilePath);
-    const recon = scanner.generateReconReport(reconFile);
-    console.log(`  ✓ Radiografía técnica guardada en: ${reconFile}`);
-    console.log(`    - Peticiones HTTP totales capturadas: ${recon.summary.totalRequestsCaptured}`);
-    console.log(`    - Endpoints catalogados: ${recon.summary.totalEndpointsDiscovered}`);
-    console.log(`    - Tokens de seguridad identificados: ${recon.summary.totalSecurityTokensIdentified}`);
-
-    if (recon.securityTokens.length > 0) {
-      console.log('    - Tokens detectados:');
-      for (const token of recon.securityTokens) {
-        console.log(`      * [${token.type}] Header: "${token.headerName}" -> Valor: ${token.sampleValue}`);
+    if (fs.existsSync(reconFile)) {
+      const recon = JSON.parse(fs.readFileSync(reconFile, 'utf-8'));
+      console.log(`\n  📁 [2/5] Radiografía técnica guardada en: ${reconFile}`);
+      console.log(`    - Peticiones HTTP totales capturadas: ${recon.summary?.totalRequestsCaptured || 0}`);
+      console.log(`    - Endpoints catalogados: ${recon.summary?.totalEndpointsDiscovered || 0}`);
+      console.log(`    - Tokens de seguridad identificados: ${recon.summary?.totalSecurityTokensIdentified || 0}`);
+      if (recon.securityTokens?.length > 0) {
+        for (const token of recon.securityTokens) {
+          console.log(`      * [${token.type}] Header: "${token.headerName}" -> Valor: ${token.sampleValue}`);
+        }
       }
+    }
+
+    // 3. Secuencia de Ejecución y Rutas Directas (TelemetryExtractor)
+    const sequenceFile = path.resolve(process.cwd(), 'execution-sequence.json');
+    if (fs.existsSync(sequenceFile)) {
+      const seq = JSON.parse(fs.readFileSync(sequenceFile, 'utf-8'));
+      console.log(`\n  📁 [3/5] Secuencia de ejecución en: ${sequenceFile}`);
+      console.log(`    - Acciones de usuario registradas: ${seq.totalActionsCaptured || 0}`);
+      console.log(`    - Rutas SPA navegables descubiertas: ${seq.uniqueRoutesDiscovered || 0}`);
+      if (seq.routeDirectNavigations?.length > 0) {
+        console.log('    - Sugerencias directas de navegación RPA (page.goto):');
+        for (const route of seq.routeDirectNavigations.slice(0, 3)) {
+          console.log(`      * Ruta: "${route.route}" -> ${route.recommendedGoto}`);
+        }
+      }
+    }
+
+    // 4. Mapa de Selectores y Robustez
+    const selectorsFile = path.resolve(process.cwd(), 'selectors-map.json');
+    if (fs.existsSync(selectorsFile)) {
+      const selMap = JSON.parse(fs.readFileSync(selectorsFile, 'utf-8'));
+      console.log(`\n  📁 [4/5] Mapa de robustez de selectores en: ${selectorsFile}`);
+      console.log(`    - Selectores únicos analizados: ${selMap.totalSelectorsAnalyzed || 0}`);
+      console.log(
+        `    - Calidad: Excelente: ${selMap.robustnessSummary?.excellentCount || 0} | Alta: ${selMap.robustnessSummary?.highCount || 0} | Media: ${selMap.robustnessSummary?.mediumCount || 0} | Frágil: ${selMap.robustnessSummary?.fragileCount || 0}`
+      );
+    }
+
+    // 5. Contratos de API XHR/Fetch
+    const contractsFile = path.resolve(process.cwd(), 'api-contracts.json');
+    if (fs.existsSync(contractsFile)) {
+      const contracts = JSON.parse(fs.readFileSync(contractsFile, 'utf-8'));
+      console.log(`\n  📁 [5/5] Contratos y esquemas de API en: ${contractsFile}`);
+      console.log(`    - Contratos de microservicios descubiertos: ${contracts.totalContractsDiscovered || 0}`);
     }
 
     console.log('\n===============================================================');

@@ -8,6 +8,8 @@ export { FrameExplorer, FindFrameOptions } from './modules/frame-explorer';
 export { ApiSpy } from './modules/api-spy';
 export { SessionManager } from './modules/session-manager';
 export { ReconEngine } from './modules/recon-engine';
+export { TelemetryExtractor } from './modules/telemetry-extractor';
+export { SessionRefresher } from './modules/session-refresher';
 
 // Re-export de tipos e interfaces TypeScript
 export * from './types';

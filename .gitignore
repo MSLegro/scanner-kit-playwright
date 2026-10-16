@@ -15,6 +15,9 @@ dist/
 session-backup.json
 recon-report.json
 benchmark-results.json
+execution-sequence.json
+selectors-map.json
+api-contracts.json
 src/examples/benchmark-*.ts
 *.log
 
