@@ -1,17 +1,29 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Page, Request, Response } from 'playwright';
+import { Dialog, Page, Request, Response } from 'playwright';
 import { DetectedSecurityToken, DiscoveredEndpoint, ReconReport } from '../types';
+
+const PASSIVE_TRACKER_PATTERNS = [
+  /google-analytics\.com/i,
+  /googletagmanager\.com/i,
+  /doubleclick\.net/i,
+  /hotjar\.com/i,
+  /segment\.io/i,
+  /facebook\.net/i,
+  /clarity\.ms/i
+];
 
 /**
  * Motor de Reconocimiento Pasivo y Radiografía Técnica de Tráfico Web.
  *
  * Durante la navegación automatizada o manual asistida, este motor audita
- * de forma pasiva cada paquete HTTP entrante y saliente, extrayendo inteligencia
- * crítica sobre la arquitectura de la aplicación:
+ * de forma 100% pasiva cada paquete HTTP entrante y saliente, sin bloquear recursos
+ * ni alterar prototipos del navegador, extrayendo inteligencia sobre:
  * - Endpoints de microservicios y REST APIs.
  * - Esquemas de autenticación y tokens en tránsito (Bearer JWT, CSRF, API Keys).
- * - Parámetros de consulta y tipos de contenido negociados.
+ * - Potencial de ahorro con Modo Turbo (imágenes, fuentes, multimedia, trackers).
+ * - Trampas de UI nativas (alert, confirm, prompt, beforeunload).
+ * - Sistemas Anti-Bot / WAF (Cloudflare Turnstile, Waiting Room, reCAPTCHA, hCaptcha, Imperva).
  */
 export class ReconEngine {
   private endpointsMap: Map<string, DiscoveredEndpoint> = new Map();
@@ -19,10 +31,36 @@ export class ReconEngine {
   private domainsContactedSet: Set<string> = new Set();
   private totalRequests = 0;
 
+  // Contadores pasivos de potencial Turbo
+  private imagesCount = 0;
+  private fontsCount = 0;
+  private mediaCount = 0;
+  private trackersCount = 0;
+
+  // Trampas de UI y WAFs detectados pasivamente
+  private uiTrapsDetected: Array<{
+    type: string;
+    message: string;
+    url: string;
+    timestamp: string;
+  }> = [];
+
+  private antiBotWafMap: Map<
+    string,
+    {
+      provider: string;
+      evidenceUrl: string;
+      rpaStrategy: string;
+    }
+  > = new Map();
+
   /**
    * Conecta los escuchadores pasivos a la página de Playwright.
+   *
+   * @param page Instancia de Page.
+   * @param options Si handleDialogsPassively es true, registra y acepta diálogos nativos sin bloquear el flujo humano.
    */
-  public attachToPage(page: Page): void {
+  public attachToPage(page: Page, options?: { handleDialogsPassively?: boolean }): void {
     page.on('request', (request: Request) => {
       this.handleRequest(request);
     });
@@ -30,15 +68,51 @@ export class ReconEngine {
     page.on('response', (response: Response) => {
       this.handleResponse(response);
     });
+
+    if (options?.handleDialogsPassively !== false) {
+      page.on('dialog', async (dialog: Dialog) => {
+        const trap = {
+          type: dialog.type(),
+          message: dialog.message(),
+          url: page.url(),
+          timestamp: new Date().toISOString()
+        };
+        this.uiTrapsDetected.push(trap);
+        console.log(
+          `\n💡 [ReconEngine] Diálogo nativo detectado pasivamente: tipo="${trap.type}", mensaje="${trap.message}"`
+        );
+        try {
+          // Aceptamos para no cancelar confirmaciones del usuario ni congelar el hilo JS
+          await dialog.accept();
+        } catch {
+          // Ignorar si ya fue cerrado
+        }
+      });
+    }
   }
 
   /**
-   * Procesa peticiones salientes para detectar tokens de seguridad y registrar endpoints.
+   * Procesa peticiones salientes para detectar tokens de seguridad, oportunidades Turbo, WAFs y endpoints.
    */
   private handleRequest(request: Request): void {
     this.totalRequests++;
     const urlString = request.url();
     const method = request.method().toUpperCase();
+    const resourceType = request.resourceType();
+
+    // 1. Contabilizar pasivamente recursos bloqueables por Modo Turbo (sin abortarlos)
+    if (resourceType === 'image' || resourceType === 'imageset') {
+      this.imagesCount++;
+    } else if (resourceType === 'font') {
+      this.fontsCount++;
+    } else if (resourceType === 'media') {
+      this.mediaCount++;
+    } else if (PASSIVE_TRACKER_PATTERNS.some((p) => p.test(urlString))) {
+      this.trackersCount++;
+    }
+
+    // 2. Detectar pasivamente desafíos Anti-Bot / WAF
+    this.detectAntiBotWaf(urlString);
 
     try {
       const parsedUrl = new URL(urlString);
@@ -85,6 +159,40 @@ export class ReconEngine {
   }
 
   /**
+   * Detecta pasivamente proveedores Anti-Bot / Captcha en base al tráfico observado.
+   */
+  private detectAntiBotWaf(url: string): void {
+    const lower = url.toLowerCase();
+    if (lower.includes('challenges.cloudflare.com') || lower.includes('/cdn-cgi/challenge-platform')) {
+      if (!this.antiBotWafMap.has('Cloudflare Turnstile / Challenge')) {
+        this.antiBotWafMap.set('Cloudflare Turnstile / Challenge', {
+          provider: 'Cloudflare Turnstile / Challenge',
+          evidenceUrl: url.slice(0, 140),
+          rpaStrategy:
+            'Mantener turboMode: false y evasionMode: false para no alterar prototipos nativos. Reutilizar cookie cf_clearance desde session-backup.json y ejecutar con canal Chrome nativo.'
+        });
+      }
+    } else if (lower.includes('google.com/recaptcha') || lower.includes('gstatic.com/recaptcha')) {
+      if (!this.antiBotWafMap.has('Google reCAPTCHA')) {
+        this.antiBotWafMap.set('Google reCAPTCHA', {
+          provider: 'Google reCAPTCHA',
+          evidenceUrl: url.slice(0, 140),
+          rpaStrategy:
+            'Reutilizar sesión autenticada (session-backup.json) para evitar disparar el reCAPTCHA en cada ejecución.'
+        });
+      }
+    } else if (lower.includes('hcaptcha.com')) {
+      if (!this.antiBotWafMap.has('hCaptcha')) {
+        this.antiBotWafMap.set('hCaptcha', {
+          provider: 'hCaptcha',
+          evidenceUrl: url.slice(0, 140),
+          rpaStrategy: 'Reutilizar cookies de sesión exportadas y mantener navegador sin bloqueo de recursos.'
+        });
+      }
+    }
+  }
+
+  /**
    * Procesa respuestas entrantes para registrar códigos de estado y content-types observados.
    */
   private handleResponse(response: Response): void {
@@ -102,9 +210,22 @@ export class ReconEngine {
           endpoint.statusCodesObserved.push(status);
         }
 
-        const contentType = response.headers()['content-type'];
+        const headers = response.headers();
+        const contentType = headers['content-type'];
         if (contentType && !endpoint.contentTypesObserved.includes(contentType)) {
           endpoint.contentTypesObserved.push(contentType);
+        }
+
+        const setCookie = headers['set-cookie'] || '';
+        if (setCookie.includes('__cfwaitingroom')) {
+          if (!this.antiBotWafMap.has('Cloudflare Waiting Room')) {
+            this.antiBotWafMap.set('Cloudflare Waiting Room', {
+              provider: 'Cloudflare Waiting Room',
+              evidenceUrl: urlString,
+              rpaStrategy:
+                'Inyectar la cookie __cfwaitingroom_portal desde session-backup.json para conservar el turno en la cola virtual.'
+            });
+          }
         }
       }
     } catch {
@@ -197,12 +318,35 @@ export class ReconEngine {
    * @returns Estructura completa ReconReport.
    */
   public generateReport(outputPath?: string): ReconReport {
+    const totalBlockable = this.imagesCount + this.fontsCount + this.mediaCount + this.trackersCount;
+    const savingsPercent =
+      this.totalRequests > 0 ? Math.round((totalBlockable / this.totalRequests) * 100) : 0;
+    const hasStrictWaf = this.antiBotWafMap.has('Cloudflare Turnstile / Challenge');
+
     const report: ReconReport = {
       generatedAt: new Date().toISOString(),
       summary: {
         totalRequestsCaptured: this.totalRequests,
         totalEndpointsDiscovered: this.endpointsMap.size,
         totalSecurityTokensIdentified: this.securityTokensMap.size
+      },
+      optimizationBlueprint: {
+        turboPotential: {
+          totalBlockableRequests: totalBlockable,
+          imagesCount: this.imagesCount,
+          fontsCount: this.fontsCount,
+          mediaCount: this.mediaCount,
+          trackersCount: this.trackersCount,
+          estimatedRequestSavingsPercent: savingsPercent,
+          recommendedForBot: !hasStrictWaf && savingsPercent >= 10,
+          recommendationReason: hasStrictWaf
+            ? 'No activar TurboMode: Se detectó Cloudflare Turnstile/Challenge que verifica la carga íntegra de sub-recursos.'
+            : savingsPercent >= 10
+              ? `Se puede ahorrar ~${savingsPercent}% de peticiones HTTP (${totalBlockable} recursos estáticos/trackers) activando turboMode: true en el bot de producción.`
+              : 'La página es ligera; el impacto de TurboMode es menor al 10%.'
+        },
+        uiTrapsDetected: this.uiTrapsDetected,
+        antiBotWafDetected: Array.from(this.antiBotWafMap.values())
       },
       securityTokens: Array.from(this.securityTokensMap.values()),
       endpoints: Array.from(this.endpointsMap.values()),
@@ -222,3 +366,4 @@ export class ReconEngine {
     return report;
   }
 }
+

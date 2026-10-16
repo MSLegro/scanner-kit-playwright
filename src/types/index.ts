@@ -16,14 +16,16 @@ export interface ScannerKitOptions {
   slowMo?: number;
 
   /**
-   * Activar Modo Turbo (intercepta y bloquea imágenes, fuentes y media).
-   * Por defecto: true.
+   * Activar Modo Turbo activo (intercepta y bloquea imágenes, fuentes y media).
+   * En modo escaneo pasivo se recomienda false para no alterar la página ni disparar WAFs.
+   * Por defecto: false.
    */
   turboMode?: boolean;
 
   /**
-   * Activar evasión y neutralización de UI (window.print, onbeforeunload, auto-dialogs).
-   * Por defecto: true.
+   * Activar evasión activa de UI (sobreescribe window.print, onbeforeunload, auto-dialogs).
+   * En modo escaneo pasivo se recomienda false para mantener prototipos nativos intactos ante Cloudflare/Turnstile.
+   * Por defecto: false.
    */
   evasionMode?: boolean;
 
@@ -268,6 +270,33 @@ export interface ReconReport {
     totalRequestsCaptured: number;
     totalEndpointsDiscovered: number;
     totalSecurityTokensIdentified: number;
+  };
+  /**
+   * Diagnóstico pasivo de oportunidades de rendimiento (Turbo), bloqueos de UI (Evasión)
+   * y protecciones Anti-Bot/WAF detectadas durante la exploración normal.
+   */
+  optimizationBlueprint?: {
+    turboPotential: {
+      totalBlockableRequests: number;
+      imagesCount: number;
+      fontsCount: number;
+      mediaCount: number;
+      trackersCount: number;
+      estimatedRequestSavingsPercent: number;
+      recommendedForBot: boolean;
+      recommendationReason: string;
+    };
+    uiTrapsDetected: Array<{
+      type: string;
+      message: string;
+      url: string;
+      timestamp: string;
+    }>;
+    antiBotWafDetected: Array<{
+      provider: string;
+      evidenceUrl: string;
+      rpaStrategy: string;
+    }>;
   };
   securityTokens: DetectedSecurityToken[];
   endpoints: DiscoveredEndpoint[];

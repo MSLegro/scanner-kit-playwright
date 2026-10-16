@@ -38,16 +38,18 @@ async function main() {
   const forceHeaded = process.argv.includes('--headed');
   
   // Lectura de configuración desde .env con prioridades CLI
+  // En modo escaneo (pnpm scan), la observación es 100% pasiva (sin bloquear recursos ni alterar prototipos)
+  // para evitar falsos positivos en sistemas Anti-Bot como Cloudflare Turnstile.
   const envHeadless = process.env.HEADLESS === 'true';
-  const slowMo = parseInt(process.env.SLOW_MO || '300', 10);
-  const turboMode = process.env.TURBO_MODE !== 'false';
-  const evasionMode = process.env.EVASION_MODE !== 'false';
+  const slowMo = parseInt(process.env.SLOW_MO || '0', 10);
+  const turboMode = process.env.TURBO_MODE === 'true' || process.argv.includes('--active-turbo');
+  const evasionMode = process.env.EVASION_MODE === 'true' || process.argv.includes('--active-evasion');
   const reconMode = process.env.RECON_MODE !== 'false';
   
   let isHeadless = forceHeadless || envHeadless || (!hasLiveDisplay && !forceHeaded);
 
   if (!isHeadless) {
-    console.log('🖥️ Modo visual activo (HEADLESS=false)...');
+    console.log('🖥️ Modo visual activo (HEADLESS=false) | Observación Pasiva Sigilosa (Stealth)...');
   } else if (!forceHeadless && !envHeadless) {
     console.log('ℹ️ Entorno sin servidor gráfico accesible (sandbox/CI). Ejecutando en modo headless para garantizar estabilidad.');
   }
@@ -71,8 +73,10 @@ async function main() {
     console.log(`[1/6] TARGET_URL vacío en .env. Usando servidor de simulación ERP local en: ${serverUrl}`);
   }
 
-  // 2. Inicializar ScannerKit con la configuración de .env
-  console.log(`[2/6] Inicializando ScannerKit (headless: ${isHeadless}, turboMode: ${turboMode}, evasionMode: ${evasionMode})...`);
+  // 2. Inicializar ScannerKit en Modo Observador Pasivo Cero-Intrusión
+  console.log(
+    `[2/6] Inicializando ScannerKit (headless: ${isHeadless}, modo: Observador Pasivo Cero-Intrusión)...`
+  );
   const outputDir = process.env.OUTPUT_DIR || './output';
   const targetCategory = process.env.TARGET_CATEGORY?.trim() || undefined;
 
@@ -84,7 +88,7 @@ async function main() {
     reconMode,
     outputDir,
     targetCategory,
-    viewport: { width: 1280, height: 720 }
+    viewport: isHeadless ? { width: 1280, height: 720 } : null
   });
 
   try {
@@ -100,13 +104,13 @@ async function main() {
 
       if (isInteractive && !isHeadless) {
         console.log('\n===============================================================');
-        console.log('🎮 MODO INTERACTIVO & AUDITORÍA EN VIVO ACTIVO');
+        console.log('🎮 MODO OBSERVADOR PASIVO & AUDITORÍA EN VIVO ACTIVO');
         console.log('===============================================================');
-        console.log('El navegador permanece abierto para que explores la web libremente:');
-        console.log('  • Inicia sesión, navega entre módulos, llena formularios o haz clic.');
-        console.log('  • ReconEngine está auditando cada llamada de red y token en tiempo real.');
-        console.log('  • Modo Turbo y Evasión están protegiendo la navegación en segundo plano.\n');
-        console.log('👉 ¿Listo para guardar sesión y reporte?');
+        console.log('El navegador funciona 100% normal y sin alteraciones para que explores libremente:');
+        console.log('  • Inicia sesión, resuelve captchas si aparecen y navega entre módulos.');
+        console.log('  • ReconEngine y TelemetryExtractor están auditando pasivamente en segundo plano.');
+        console.log('  • No se bloquean imágenes ni se alteran prototipos para evitar detección Anti-Bot.\n');
+        console.log('👉 ¿Listo para guardar sesión y generar el blueprint de automatización?');
         console.log('   Presiona [ENTER] aquí en la terminal mientras la ventana sigue abierta.');
         console.log('   (⚠️ Si cierras la ventana con la [X] del ratón, el navegador destruirá el DOM antes de extraer localStorage/sessionStorage).\n');
 
@@ -207,7 +211,7 @@ async function main() {
       console.log(`    - SessionStorage keys: ${Object.keys(session.sessionStorage || {}).length}`);
     }
 
-    // 2. Radiografía técnica (ReconEngine)
+    // 2. Radiografía técnica y Oportunidades de Optimización (ReconEngine)
     if (artifacts.reconReportFile && fs.existsSync(artifacts.reconReportFile)) {
       const recon = JSON.parse(fs.readFileSync(artifacts.reconReportFile, 'utf-8'));
       console.log(`\n  📁 [2/5] Radiografía técnica guardada en: ${artifacts.reconReportFile}`);
@@ -217,6 +221,17 @@ async function main() {
       if (recon.securityTokens?.length > 0) {
         for (const token of recon.securityTokens) {
           console.log(`      * [${token.type}] Header: "${token.headerName}" -> Valor: ${token.sampleValue}`);
+        }
+      }
+      if (recon.optimizationBlueprint) {
+        const bp = recon.optimizationBlueprint;
+        console.log(`    - Diagnóstico de Optimización para el Bot:`);
+        console.log(`      * Potencial Turbo: ${bp.turboPotential?.recommendationReason}`);
+        console.log(`      * Trampas de UI (diálogos) detectadas: ${bp.uiTrapsDetected?.length || 0}`);
+        if (bp.antiBotWafDetected?.length > 0) {
+          for (const waf of bp.antiBotWafDetected) {
+            console.log(`      * ⚠️ Anti-Bot / WAF detectado: [${waf.provider}] -> ${waf.rpaStrategy}`);
+          }
         }
       }
     }
@@ -259,9 +274,9 @@ async function main() {
     console.error('\n❌ Error durante la ejecución del escaneo:', error);
     process.exitCode = 1;
   } finally {
-    // Limpieza de recursos
+    // Limpieza de recursos (evitando doble exportación si ya se ejecutó en el paso 6)
     console.log('\nCerrando navegador y finalizando servicios...');
-    await scanner.close();
+    await scanner.close({ exportArtifacts: false });
     if (server) {
       await server.stop();
     }

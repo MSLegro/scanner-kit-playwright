@@ -27,30 +27,58 @@ export class TelemetryExtractor {
   private apiContractsMap: Map<string, ApiContractEndpoint> = new Map();
   private routesMap: Map<string, RouteTrackerRecord> = new Map();
   private requestStartTimes: Map<string, number> = new Map();
-  private bindingExposed = false;
+  private static readonly TELEMETRY_PREFIX = '__SK_TELEMETRY__:';
 
   /**
-   * Conecta los escuchadores pasivos y la inyección de telemetría a la página/contexto.
+   * Conecta los escuchadores pasivos y la inyección sigilosa de telemetría a la página/contexto.
+   * No expone propiedades globales en `window` (evita Runtime.addBinding) para ser 100% invisible
+   * ante sistemas anti-bot como Cloudflare Turnstile, DataDome o Imperva.
    */
-  public async attach(page: Page, context: BrowserContext): Promise<void> {
-    // 1. Exponer función puente para recibir acciones de usuario desde el DOM
-    const bindingName = '__scannerKitRecordTelemetryAction';
-    if (!this.bindingExposed) {
+  public async attach(page: Page, _context: BrowserContext): Promise<void> {
+    // 1. Escuchar eventos de telemetría vía canal pasivo de consola (cero polución en window)
+    page.on('console', (msg) => {
       try {
-        await context.exposeFunction(bindingName, (rawPayload: string) => {
-          this.handleInPageAction(rawPayload);
-        });
-        this.bindingExposed = true;
+        if (msg.type() === 'debug') {
+          const text = msg.text();
+          if (text.startsWith(TelemetryExtractor.TELEMETRY_PREFIX)) {
+            const rawPayload = text.slice(TelemetryExtractor.TELEMETRY_PREFIX.length);
+            this.handleInPageAction(rawPayload);
+          }
+        }
       } catch {
-        // En caso de que ya estuviera expuesta en el contexto
+        // Ignorar errores de parseo
       }
-    }
+    });
 
-    // 2. Inyectar script de captura en el navegador (para clicks, inputs y hashchange)
-    await page.addInitScript(() => {
-      const g = window as any;
-      if (g.__scannerTelemetryInjected) return;
-      g.__scannerTelemetryInjected = true;
+    // 2. Inyectar script sigiloso en el navegador (sin dejar variables globales en window)
+    await page.addInitScript((prefix: string) => {
+      // No ejecutar ni registrar listeners dentro de iframes de verificación Anti-Bot / Captcha
+      const isChallengeFrame = (): boolean => {
+        try {
+          const host = (window.location.hostname || '').toLowerCase();
+          const href = (window.location.href || '').toLowerCase();
+          return (
+            host.includes('cloudflare.com') ||
+            host.includes('challenges.cloudflare.com') ||
+            href.includes('cdn-cgi/challenge-platform') ||
+            host.includes('recaptcha') ||
+            host.includes('hcaptcha') ||
+            host.includes('datadome') ||
+            host.includes('imperva')
+          );
+        } catch {
+          return false;
+        }
+      };
+
+      if (isChallengeFrame()) return;
+
+      function emitTelemetry(payload: Record<string, unknown>): void {
+        if (isChallengeFrame()) return;
+        try {
+          console.debug(prefix + JSON.stringify(payload));
+        } catch {}
+      }
 
       function sanitizeText(txt: string | null | undefined): string | undefined {
         if (!txt) return undefined;
@@ -141,19 +169,15 @@ export class TelemetryExtractor {
         'click',
         (event) => {
           try {
+            if (isChallengeFrame()) return;
             const meta = extractElementMeta(event.target);
             if (!meta) return;
-            const caller = g.__scannerKitRecordTelemetryAction;
-            if (typeof caller === 'function') {
-              caller(
-                JSON.stringify({
-                  actionType: 'click',
-                  url: window.location.href,
-                  target: meta,
-                  timestamp: new Date().toISOString()
-                })
-              );
-            }
+            emitTelemetry({
+              actionType: 'click',
+              url: window.location.href,
+              target: meta,
+              timestamp: new Date().toISOString()
+            });
           } catch {}
         },
         true
@@ -164,8 +188,16 @@ export class TelemetryExtractor {
         'change',
         (event) => {
           try {
+            if (isChallengeFrame()) return;
             const target = event.target;
-            if (!target || !(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) {
+            if (
+              !target ||
+              !(
+                target instanceof HTMLInputElement ||
+                target instanceof HTMLTextAreaElement ||
+                target instanceof HTMLSelectElement
+              )
+            ) {
               return;
             }
             const meta = extractElementMeta(target);
@@ -178,18 +210,13 @@ export class TelemetryExtractor {
               valPreview = `${valPreview.slice(0, 25)}...`;
             }
 
-            const caller = g.__scannerKitRecordTelemetryAction;
-            if (typeof caller === 'function') {
-              caller(
-                JSON.stringify({
-                  actionType: 'input',
-                  url: window.location.href,
-                  target: meta,
-                  valuePreview: valPreview,
-                  timestamp: new Date().toISOString()
-                })
-              );
-            }
+            emitTelemetry({
+              actionType: 'input',
+              url: window.location.href,
+              target: meta,
+              valuePreview: valPreview,
+              timestamp: new Date().toISOString()
+            });
           } catch {}
         },
         true
@@ -197,19 +224,15 @@ export class TelemetryExtractor {
 
       // Escuchadores de navegación SPA en el cliente
       window.addEventListener('hashchange', () => {
-        const caller = g.__scannerKitRecordTelemetryAction;
-        if (typeof caller === 'function') {
-          caller(
-            JSON.stringify({
-              actionType: 'url_change',
-              url: window.location.href,
-              navType: 'hashchange',
-              timestamp: new Date().toISOString()
-            })
-          );
-        }
+        if (isChallengeFrame()) return;
+        emitTelemetry({
+          actionType: 'url_change',
+          url: window.location.href,
+          navType: 'hashchange',
+          timestamp: new Date().toISOString()
+        });
       });
-    });
+    }, TelemetryExtractor.TELEMETRY_PREFIX);
 
     // 3. Escuchar navegación del marco principal (Route Tracker por frame)
     page.on('framenavigated', (frame) => {

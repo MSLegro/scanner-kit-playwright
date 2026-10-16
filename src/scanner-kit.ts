@@ -64,28 +64,42 @@ export class ScannerKit {
   public static async create(options: ScannerKitOptions = {}): Promise<ScannerKit> {
     const headless = options.headless ?? true;
     const slowMo = options.slowMo ?? 0;
-    const turboMode = options.turboMode ?? true;
-    const evasionMode = options.evasionMode ?? true;
+    const turboMode = options.turboMode ?? false;
+    const evasionMode = options.evasionMode ?? false;
     const reconMode = options.reconMode ?? true;
 
+    const isLinux = process.platform === 'linux';
     const launchArgs = [
       '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-infobars',
-      '--window-position=0,0',
-      '--ignore-certificate-errors',
+      ...(isLinux ? ['--no-sandbox', '--disable-setuid-sandbox'] : []),
       ...(options.launchArgs ?? [])
     ];
 
-    // 1. Lanzar el navegador Chromium (con fallback resiliente a headless si no hay servidor gráfico accesible)
+    // 1. Lanzar el navegador (en modo visual intenta usar Google Chrome nativo para huella TLS/Brand genuina)
     let browser: Browser;
     try {
-      browser = await chromium.launch({
-        headless,
-        slowMo,
-        args: launchArgs
-      });
+      if (!headless) {
+        try {
+          browser = await chromium.launch({
+            channel: 'chrome',
+            headless: false,
+            slowMo,
+            args: launchArgs
+          });
+        } catch {
+          browser = await chromium.launch({
+            headless: false,
+            slowMo,
+            args: launchArgs
+          });
+        }
+      } else {
+        browser = await chromium.launch({
+          headless: true,
+          slowMo,
+          args: launchArgs
+        });
+      }
     } catch (launchErr: unknown) {
       const errStr = String(launchErr);
       const isDisplayFailure =
@@ -108,23 +122,22 @@ export class ScannerKit {
       }
     }
 
-    // 2. Crear el BrowserContext con viewport y user-agent personalizado
+    // 2. Crear el BrowserContext preservando el User-Agent y Client-Hints nativos del navegador real
+    const defaultViewport = headless ? { width: 1366, height: 768 } : null;
     const context = await browser.newContext({
-      userAgent:
-        options.userAgent ??
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      viewport: options.viewport === null ? null : options.viewport ?? { width: 1366, height: 768 },
+      ...(options.userAgent ? { userAgent: options.userAgent } : {}),
+      viewport: options.viewport === undefined ? defaultViewport : options.viewport,
       ignoreHTTPSErrors: true
     });
 
-    // 3. Inicializar e inyectar el Modo Turbo (bloqueo de recursos pesados)
+    // 3. Inicializar e inyectar el Modo Turbo (solo si se solicita explícitamente para un bot en producción)
     let turboManager: TurboManager | undefined;
     if (turboMode) {
       turboManager = new TurboManager();
       await turboManager.applyToContext(context);
     }
 
-    // 4. Inicializar e inyectar Evasión de UI (print, beforeunload)
+    // 4. Inicializar e inyectar Evasión activa de UI (solo si se solicita explícitamente)
     let evasionManager: EvasionManager | undefined;
     if (evasionMode) {
       evasionManager = new EvasionManager();
@@ -134,19 +147,19 @@ export class ScannerKit {
     // 5. Crear la página inicial
     const page = await context.newPage();
 
-    // 6. Configurar listeners de evasión en la página (diálogos)
+    // 6. Configurar listeners de evasión activa en la página (si está habilitada)
     if (evasionManager) {
       evasionManager.attachToPage(page);
     }
 
-    // 7. Configurar ReconEngine (escáner pasivo de red y tokens)
+    // 7. Configurar ReconEngine (escáner 100% pasivo de red, tokens, potencial Turbo, WAF y diálogos)
     let reconEngine: ReconEngine | undefined;
     if (reconMode) {
       reconEngine = new ReconEngine();
-      reconEngine.attachToPage(page);
+      reconEngine.attachToPage(page, { handleDialogsPassively: !evasionManager });
     }
 
-    // 8. Configurar TelemetryExtractor (acciones, selectores, contratos API, route tracker)
+    // 8. Configurar TelemetryExtractor sigiloso (acciones, selectores, contratos API, route tracker)
     const telemetryMode = options.telemetryMode ?? true;
     let telemetryExtractor: TelemetryExtractor | undefined;
     if (telemetryMode) {
@@ -194,7 +207,7 @@ export class ScannerKit {
 
   /**
    * Abre una nueva pestaña/página configurándole automáticamente las políticas
-   * de evasión de diálogos y telemetría de reconocimiento pasivo.
+   * de reconocimiento pasivo y telemetría.
    */
   public async newPage(): Promise<Page> {
     const page = await this._context.newPage();
@@ -202,7 +215,7 @@ export class ScannerKit {
       this._evasionManager.attachToPage(page);
     }
     if (this._reconEngine) {
-      this._reconEngine.attachToPage(page);
+      this._reconEngine.attachToPage(page, { handleDialogsPassively: !this._evasionManager });
     }
     if (this._telemetryExtractor) {
       await this._telemetryExtractor.attach(page, this._context);

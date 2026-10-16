@@ -2,9 +2,9 @@
 
 # 🛡️⚡ scanner-kit-playwright
 
-**Universal Web Reconnaissance, Reverse Engineering & Automation Kit for Playwright & TypeScript**
+**Universal Web Reconnaissance, Reverse Engineering & RPA Blueprint Kit for Playwright & TypeScript**
 
-*Kit de Automatización RPA Híbrido, Ingeniería Inversa y Extracción de APIs para Aplicaciones Web Complejas y Sistemas ERP.*
+*Motor de Descubrimiento Pasivo Sigiloso (Stealth Anti-WAF), Ingeniería Inversa de APIs y Kit de Automatización RPA Híbrido para Portales Corporativos y Sistemas ERP.*
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-1.49+-orange.svg)](https://playwright.dev/)
@@ -15,82 +15,97 @@
 
 ---
 
-## 📖 Descripción General
+## 📖 Filosofía y Propósito Principal
 
-Automatizar portales corporativos pesados, sistemas ERP (SAP WebGUI/Fiori, Oracle PeopleSoft, Salesforce) y plataformas web complejas suele ser un reto frustrante debido a:
-- Tiempos de carga lentos causados por megabytes de imágenes, banners y telemetría.
-- Modales de impresión (`window.print()`) y trampas de salida (`beforeunload`) que congelan el hilo del navegador.
-- Elementos ocultos dentro de múltiples niveles de `<iframe>` anidados.
-- Scraping frágil de tablas HTML que cambian constantemente de selectores.
-- Sesiones de usuario complejas repartidas entre cookies `HttpOnly`, `localStorage` y `sessionStorage`.
+El objetivo principal de **`scanner-kit-playwright`** no es simplemente ejecutar clics sobre una página, sino **identificar, auditar y extraer todo el blueprint técnico necesario para construir una automatización RPA óptima**, separando claramente dos fases:
 
-**`scanner-kit-playwright`** resuelve estos desafíos empaquetando Playwright con un motor de reconocimiento de bajo nivel, evasión de bloqueos nativos, navegación multi-frame y espionaje reactivo de APIs.
+1. **🕵️ Fase 1: Observación Pasiva Cero-Intrusión (`pnpm scan` — Modo Sigiloso / Stealth):**
+   - Abre una instancia genuina de Google Chrome (`channel: 'chrome'`) con su huella TLS/User-Agent real, **sin bloquear sub-recursos** y **sin alterar prototipos nativos del DOM (`addEventListener`, `window.print`)**.
+   - Permite que el desarrollador interactúe con normalidad, supere validaciones **Cloudflare Turnstile / Bot Management / DataDome / Imperva / reCAPTCHA** sin ser detectado como bot, e inicie sesión en portales protegidos.
+   - En segundo plano, audita pasivamente el tráfico HTTP/XHR/Fetch, los iframes anidados, las rutas SPA, los tokens de sesión y las interacciones de usuario.
+
+2. **📐 Fase 2: Generación del Blueprint & Ejecución del Bot RPA (`output/<target>/`):**
+   - Al finalizar la exploración, exporta 5 artefactos estructurados que revelan qué microservicios JSON pueden invocarse directamente (evitando automatizar calendarios o tablas complejas), qué selectores son estables, qué potencial de ahorro tiene el Modo Turbo y qué estrategia anti-WAF debe aplicar el bot en producción.
 
 ---
 
-## 🚀 Capacidades Nativas
+## 🏗️ Arquitectura de Módulos
 
 ```mermaid
-graph TD
-    A[ScannerKit Engine] --> B[Modo Turbo: Bloqueo de Media/Trackers]
-    A --> C[Evasión de UI: Neutralización de print, beforeunload, diálogos]
-    A --> D[Buscador Multi-Frame: Búsqueda Recursiva en Iframes]
-    A --> E[Espía Híbrido clickAndSpyApi: Captura Concurrente de JSON]
-    A --> F[SessionManager: Cookies + Local + SessionStorage]
-    A --> G[ReconEngine: Auditoría Pasiva de Tráfico y Tokens]
+flowchart TD
+    subgraph Fase1["🕵️ Fase 1: Escaneo Pasivo Sigiloso (pnpm scan)"]
+        A[Navegador Chrome Nativo Cero-Intrusión] --> B[ReconEngine: Auditoría Pasiva de Red, WAF y Potencial Turbo]
+        A --> C[TelemetryExtractor: Captura Multi-Frame vía Bridge Silencioso]
+        C --> D[SelectorEvaluator: Matriz de Estabilidad de Locators]
+        C --> E[ApiContractBuilder: Esquemas JSON y Payloads XHR/Fetch]
+        C --> F[RouteTracker: Detección de Rutas Directas goto]
+        A --> G[SessionManager: Extracción de Cookies HttpOnly + Storage]
+    end
+
+    subgraph Fase2["🤖 Fase 2: Kit de Ejecución para el Bot RPA"]
+        H[Bot RPA en Producción] --> I[TurboManager: Bloqueo Selectivo de Media/Trackers]
+        H --> J[EvasionManager: Neutralización de print, beforeunload y alertas]
+        H --> K[FrameExplorer: Búsqueda Recursiva en Iframes]
+        H --> L[ApiSpy: clickAndSpyApi para Extracción Híbrida JSON]
+        H --> M[SessionRefresher: Auto-Renovación Anti-401/403 con Mutex]
+    end
+
+    Fase1 --> N["📦 output/&lt;dominio_o_ip&gt;/[categoria]/"]
+    N --> Fase2
 ```
 
-### 1. 🏎️ Modo Turbo (Rendimiento Extremo)
-- Interceptación a nivel de red con `context.route()`.
-- Bloquea recursos pesados (`image`, `media`, `font`) y trackers conocidos (`Google Analytics`, `Hotjar`, etc.).
-- **Preserva intactos los estilos CSS (`stylesheet`) y scripts**, asegurando que los selectores de visibilidad (`:visible`, geometrías de layout) sigan funcionando de forma determinista.
+---
 
-### 2. 🥷 Evasión de UI & Neutralización
-- Inyección ultra-temprana con `context.addInitScript()`:
-  - Anula `window.print()`, reemplazándolo por un stub silencioso para evitar congelar el navegador al generar facturas o reportes.
-  - Neutraliza trampas de salida `onbeforeunload` y oyentes bloqueantes de navegación.
-- Auto-resolución inteligente de diálogos nativos (`page.on('dialog')`), evitando deadlocks en `alert()`, `confirm()` y `prompt()`.
+## 🚀 Capacidades Principales
 
-### 3. 🔍 Buscador Multi-Frame Inteligente
-- Método `findElementAcrossFrames(selector, options)`.
-- Rastrea elementos recorriendo automáticamente el DOM principal y **cualquier `<iframe>` anidado activo**, sin importar la profundidad arquitectónica.
+### 1. 🕵️ Modo Observador Pasivo Cero-Intrusión (Stealth Anti-WAF)
+- Por defecto (`turboMode: false`, `evasionMode: false`), el escáner opera en modo **100% pasivo**:
+  - Utiliza el canal oficial de Google Chrome (`channel: 'chrome'`) cuando se ejecuta en modo visual (`headless: false`), manteniendo intactos el `User-Agent`, el viewport nativo y la huella TLS/JA3.
+  - Excluye automáticamente iframes de desafíos de seguridad (`challenges.cloudflare.com`, `recaptcha`, `hcaptcha`, `datadome`, `imperva`) de cualquier inyección de telemetría.
+  - Comunica los eventos del DOM mediante un puente pasivo (`console.debug`) en lugar de inyectar bindings globales (`window.__scanner...`) ni sobrescribir `EventTarget.prototype.addEventListener`, evitando falsos positivos en WAFs modernos.
 
-### 4. 🎯 El Espía de Botones Híbrido (`clickAndSpyApi`)
-- Ejecuta el clic sobre un elemento visual y **simultáneamente atrapa la respuesta de red (XHR/Fetch)** mediante `Promise.all` y `waitForResponse`.
-- Devuelve el JSON puro del backend con tipado TypeScript (`<T>`), cabeceras HTTP y latencia exacta en milisegundos (`timingMs`), eliminando la fragilidad del web scraping tradicional.
+### 2. 📊 Blueprint de Optimización Pasiva (`optimizationBlueprint` en `recon-report.json`)
+Durante tu navegación normal, `ReconEngine` calcula y diagnostica qué optimizaciones debes activar (o evitar) en tu bot final:
+- **Potencial de Modo Turbo (`turboPotential`):** Cuantifica cuántas peticiones de imágenes, fuentes, multimedia y trackers se cargaron, calculando el porcentaje exacto de ahorro de red (`estimatedRequestSavingsPercent`) y recomendando si es seguro activar `turboMode: true` (`recommendedForBot`).
+- **Detección de WAF / Anti-Bot (`antiBotWafDetected`):** Identifica automáticamente si el portal utiliza Cloudflare Turnstile, DataDome, Imperva o reCAPTCHA y documenta la estrategia RPA recomendada (ej. reutilización de `cf_clearance` y peticiones vía `page.request`).
+- **Detección de Trampas UI (`uiTrapsDetected`):** Registra si la aplicación disparó diálogos nativos (`alert`, `confirm`, `prompt`) durante la sesión para que sepas si tu bot requiere `evasionMode: true`.
 
-### 5. 💾 Exportador de Sesión Completa
-- Empaqueta en un único archivo JSON:
-  - Cookies del navegador (incluyendo atributos `HttpOnly`, `Secure` y `SameSite`).
-  - Almacenamiento local (`localStorage`).
-  - Almacenamiento de sesión (`sessionStorage`).
-- Permite reanudar sesiones con `restoreSession()`, evitando repetir autenticaciones manuales o pasos 2FA.
+### 3. 📂 Agrupación Automática por Objetivo y Categoría (`output/<target>/[category]/`)
+- Todos los artefactos generados se organizan automáticamente en subcarpetas limpias según el dominio o `IP_puerto` del portal escaneado:
+  ```text
+  output/
+  ├── portal.ejemplo-corporativo.com/
+  │   ├── session-backup.json       # Cookies (incl. HttpOnly/cf_clearance), localStorage y sessionStorage
+  │   ├── recon-report.json         # Radiografía de red, tokens y optimizationBlueprint
+  │   ├── execution-sequence.json   # Paso a paso cronológico de clics, inputs y rutas SPA
+  │   ├── selectors-map.json        # Ranking de robustez de selectores (EXCELLENT a FRAGILE)
+  │   └── api-contracts.json        # Contratos REST/XHR/Fetch con payloads y esquemas tipados
+  └── 192.168.1.50_8080/
+      └── facturacion/              # Subcarpeta opcional definida con TARGET_CATEGORY=facturacion
+  ```
 
-### 6. 📡 Radiografía Técnica Pasiva (`recon-report.json`)
-- Escucha pasivamente todo el tráfico HTTP durante la navegación automatizada o manual asistida.
-- Clasifica endpoints REST y microservicios (métodos, query params, status codes, content-types y payloads de muestra).
-- Identifica y enmascara tokens de seguridad (`Bearer JWT`, `Basic`, `X-CSRF-Token`, `API-Key`).
+### 4. 📜 Ingeniería Inversa de Contratos API (`api-contracts.json`)
+- Intercepta llamadas `XHR` y `fetch` asíncronas disparadas por tus acciones en la interfaz (incluso dentro de micro-frontends embebidos en iframes).
+- Captura URL, query params, cabeceras de petición/respuesta, latencia en milisegundos, muestras reales de payload JSON/XML/FormData y **deduce automáticamente el esquema tipado (`requestSchema` y `responseSchema`)** para que puedas sustituir clics lentos de UI por llamadas HTTP directas.
 
-### 7. 🎬 Telemetry Extractor & Secuencia de Acciones (`execution-sequence.json`)
-- Registra el orden cronológico estricto de todas las acciones del usuario (clics, inputs con valores enmascarados, cambios de ruta SPA).
-- Cruza cada acción con la URL activa y el elemento objetivo para reconstruir flujos de RPA idénticos.
+### 5. 🛡️ Evaluador de Robustez de Selectores (`selectors-map.json`)
+- Audita cada elemento con el que interactúas (tanto en el documento raíz como en iframes del mismo origen) y califica su estabilidad de `0` a `100`:
+  - `EXCELLENT` (`95+`): Atributos dedicados de automatización (`data-testid`, `data-cy`, `data-qa`).
+  - `HIGH` (`85-94`): IDs estáticos limpios, `aria-label`, roles semánticos o `name`/`placeholder` únicos.
+  - `MEDIUM` (`60-84`): Texto visible (`page.getByText`) o combinaciones de clases de componentes UI.
+  - `FRAGILE` (`<60`): Rutas CSS posicionales (`nth-of-type`) o XPaths estructurales profundos.
 
-### 8. 🛡️ Matriz de Robustez de Selectores (`selectors-map.json`)
-- Analiza cada elemento interactuado en la página y evalúa su resistencia a cambios en el DOM.
-- Clasifica los selectores en niveles de fiabilidad: `EXCELLENT` (`data-testid`), `HIGH` (roles ARIA, IDs estáticos, placeholders), `MEDIUM` (texto visible, clases CSS) y `FRAGILE` (XPaths estructurales).
-- Recomienda la sintaxis de Playwright Locator óptima para cada elemento (`page.getByRole`, `page.getByTestId`, etc.).
+### 6. 🎬 Secuencia de Ejecución y Route Tracker (`execution-sequence.json`)
+- Graba cronológicamente cada acción (`click`, `input` con contraseñas enmascaradas, `change`, `submit`, `navigate`) junto con el selector recomendado de Playwright y la ruta activa.
+- Detecta vistas accesibles mediante navegación directa (`await page.goto(...)`) para saltar menús anidados.
 
-### 9. 📜 Contratos y Esquemas de API XHR/Fetch (`api-contracts.json`)
-- Intercepta llamadas REST asíncronas disparadas por la interfaz.
-- Captura payloads de petición, cabeceras relevantes, códigos de respuesta, latencia media de backend y **deduce automáticamente el esquema JSON tipado** de cada endpoint.
-
-### 10. 🧭 Route Tracker (Navegación Directa para RPA)
-- Detecta navegación SPA basada en hashes o URLs profundas (`framenavigated`, `hashchange`).
-- Evalúa qué vistas soportan apertura directa (`page.goto`), sugiriendo la línea de código exacta para que los bots eviten clics lentos en menús y submenús anidados.
-
-### 11. 🔄 Session Refresher Anti-401 / Anti-403 (`SessionRefresher`)
-- Wrapper HTTP para consumo de microservicios con inyección automática de tokens JWT.
-- Si un endpoint responde `401 Unauthorized` o `403 Forbidden`, ejecuta un **re-login silencioso en segundo plano con control de concurrencia (Mutex)**, actualiza el archivo de sesión (`session-backup.json`) y reintenta la petición original automáticamente.
+### 7. ⚡ Módulos Activos para el Bot en Producción
+Cuando pases de la fase de descubrimiento a programar tu bot RPA con `ScannerKit`, cuentas con:
+- **`TurboManager` (`turboMode: true`):** Bloquea imágenes, fuentes, video y trackers conservando CSS y scripts para acelerar cargas en portales sin WAF estricto.
+- **`EvasionManager` (`evasionMode: true`):** Anula `window.print()`, neutraliza bloqueos `beforeunload` y auto-resuelve diálogos nativos (`alert`/`confirm`).
+- **`FrameExplorer` (`findElementAcrossFrames`):** Busca selectores recursivamente a través de múltiples niveles de `<iframe>`.
+- **`ApiSpy` (`clickAndSpyApi<T>`):** Hace clic en un botón y captura concurrentemente la respuesta JSON del backend con tipado genérico.
+- **`SessionManager` & `SessionRefresher`:** Exporta/restaura sesiones completas (`restoreSession`) y auto-renueva tokens ante errores `401`/`403` con bloqueo de concurrencia (Mutex).
 
 ---
 
@@ -101,224 +116,184 @@ graph TD
 git clone https://github.com/MSLegro/scanner-kit-playwright.git
 cd scanner-kit-playwright
 
-# 2. Instalar dependencias con pnpm (o npm)
+# 2. Instalar dependencias
 pnpm install
 
-# 3. Descargar el navegador Chromium para Playwright
+# 3. Instalar navegadores de Playwright
 npx playwright install chromium
 ```
 
 ---
 
-## ⚙️ Configuración Rápida (`.env`)
+## ⚙️ Configuración (`.env`)
 
-Crea un archivo `.env` en la raíz (puedes basarte en `.env.example`):
+Copia el archivo `.env.example` a `.env` en la raíz del proyecto:
 
 ```ini
-# ===============================================================
-# Configuración de ScannerKit Playwright (.env)
-# ===============================================================
+# URL de la aplicación web o ERP que deseas escanear
+# (Deja vacío para ejecutar la demo con el servidor ERP simulado local)
+TARGET_URL=https://mi-portal-objetivo.com
 
-# URL de la web o ERP que deseas auditar
-# (Deja vacío si deseas usar el servidor local de prueba)
-TARGET_URL=https://tu-sistema-erp.com
-
-# Modo de ejecución (false = ventana visual abierta, true = modo headless)
+# Modo visual interactivo (false = ventana abierta de Chrome, true = headless)
 HEADLESS=false
-
-# Modo Interactivo:
-# true = Mantiene el navegador abierto para explorar y loguearte manualmente.
-#        Al terminar tu flujo, presiona [ENTER] en la terminal o cierra la ventana.
 INTERACTIVE=true
 
-# Pausa visual en ms entre acciones de Playwright
-SLOW_MO=300
+# Pausa entre acciones programáticas (0 recomendado para navegación manual fluida)
+SLOW_MO=0
 
-# Activar o desactivar módulos del kit
-TURBO_MODE=true
-EVASION_MODE=true
+# Durante el escaneo (pnpm scan) se recomiendan en false para operar en
+# Modo Observador Pasivo Cero-Intrusión (evita detección de Cloudflare Turnstile / WAF).
+# El escáner medirá pasivamente el potencial de ahorro y lo reportará en recon-report.json.
+TURBO_MODE=false
+EVASION_MODE=false
+
+# Auditoría pasiva de red y generación de blueprint
 RECON_MODE=true
 
-# Rutas de destino para los artefactos exportados
-SESSION_BACKUP_PATH=./session-backup.json
-RECON_REPORT_PATH=./recon-report.json
+# Organización automática de artefactos: ./output/<dominio_o_ip>/[TARGET_CATEGORY]/
+OUTPUT_DIR=./output
+TARGET_CATEGORY=
 ```
 
 ---
 
 ## 🚀 Uso Rápido
 
-### Modo 1: Escaneo Interactivo desde la Terminal
-
-Configura tu `.env` y ejecuta:
+### 1. Ejecutar un Escaneo de Descubrimiento (`pnpm scan`)
 
 ```bash
 pnpm scan
 ```
 
-O pásale la URL directamente por argumento CLI para sobreescribir el `.env`:
+También puedes indicar la URL objetivo directamente por CLI:
 
 ```bash
-pnpm scan https://mi-portal-corporativo.com
+pnpm scan https://mi-portal-objetivo.com
 ```
 
-> **¿Qué ocurre durante el escaneo interactivo?**
-> 1. Se abre el navegador con Turbo y Evasión activados.
-> 2. Puedes interactuar libremente: loguearte, explorar menús, abrir modales o hacer transacciones.
-> 3. En segundo plano, ReconEngine cataloga cada petición, API y token en tránsito.
-> 4. Al terminar tu flujo, presiona **`[ENTER]`** en la terminal o cierra la ventana.
-> 5. Se generarán automáticamente `session-backup.json` y `recon-report.json`.
+**Flujo de trabajo recomendado:**
+1. Se abrirá el navegador en **Modo Observador Pasivo Sigiloso**.
+2. Inicia sesión normalmente (resuelve cualquier captcha si aparece), navega por los módulos, llena filtros y ejecuta las consultas que te interese automatizar.
+3. Con la ventana del navegador aún abierta, presiona **`[ENTER]`** en la terminal.
+4. Revisa la carpeta generada en `./output/<dominio_o_ip>/` con los 5 archivos JSON del blueprint.
 
 ---
 
-### Modo 2: En tus Propios Scripts de Automatización (RPA Híbrido)
+### 2. Usar `ScannerKit` para Construir tu Bot RPA
 
-Puedes importar y usar `ScannerKit` directamente en tus proyectos TypeScript:
+Una vez analizado el blueprint en `./output/<target>/`, puedes construir tu bot combinando restauración de sesión, consumo de APIs en el contexto del navegador (`page.request`) o utilidades híbridas:
 
 ```typescript
 import { ScannerKit } from 'scanner-kit-playwright';
 
-async function main() {
-  // 1. Inicializar el kit
+async function runBot() {
+  // 1. Inicializar según la recomendación de recon-report.json -> optimizationBlueprint
   const scanner = await ScannerKit.create({
     headless: false,
-    turboMode: true,
-    evasionMode: true,
-    reconMode: true
+    turboMode: false,   // false si el portal tiene Cloudflare Turnstile; true en ERPs internos sin WAF
+    evasionMode: false, // true si recon-report detectó trampas window.print() o alerts bloqueantes
+    reconMode: true,
+    outputDir: './output',
+    targetCategory: 'ejecucion-bot'
   });
 
-  // 2. Navegar a la aplicación
-  await scanner.goto('https://mi-erp.empresa.com');
+  // 2. Restaurar sesión previa (cookies cf_clearance, JSESSIONID, localStorage, sessionStorage)
+  await scanner.goto('https://mi-portal-objetivo.com');
+  await scanner.restoreSession('./output/mi-portal-objetivo.com/session-backup.json');
+  await scanner.page.reload();
 
-  // 3. Localizar elementos dentro de cualquier iframe anidado
-  const botonReporte = await scanner.findElementAcrossFrames('#btn-generar-reporte', {
+  // 3. Buscar elementos incluso si están dentro de iframes anidados
+  const btnConsultar = await scanner.findElementAcrossFrames('#btn-consultar', {
     timeout: 5000,
     requireVisible: true
   });
-  console.log(`Elemento encontrado en iframe: ${botonReporte.isInIframe}`);
 
-  // 4. Espiar la API del backend al hacer clic
-  interface ReporteResponse {
-    status: string;
-    totalFacturas: number;
-    datos: Array<{ id: string; monto: number }>;
-  }
-
-  const resultado = await scanner.clickAndSpyApi<ReporteResponse>(botonReporte.locator, {
+  // 4. Espiar la respuesta JSON del backend al hacer clic
+  const respuesta = await scanner.clickAndSpyApi<{ items: unknown[] }>(btnConsultar.locator, {
     urlPattern: '/api/v1/reportes',
-    method: 'GET',
-    timeout: 10000
+    method: 'POST'
   });
 
-  console.log(`✓ API respondida en ${resultado.timingMs}ms con Status ${resultado.status}`);
-  console.log('Facturas recibidas:', resultado.data.datos);
+  console.log(`Datos extraídos en ${respuesta.timingMs}ms:`, respuesta.data);
 
-  // 5. Exportar la sesión completa para futuros scripts
-  await scanner.exportSession('./session-backup.json');
-
-  // 6. Generar el reporte de reconocimiento técnico
-  scanner.generateReconReport('./recon-report.json');
-
+  // 5. Exportar todos los artefactos y cerrar
   await scanner.close();
 }
 
-main();
+runBot();
 ```
 
 ---
 
-## 🔄 Reutilización de Sesión (Bypass de Login)
-
-Una vez que exportaste tu sesión en `session-backup.json`, puedes reanudarla en cualquier script posterior **sin tener que volver a iniciar sesión**:
-
-```typescript
-import { ScannerKit } from 'scanner-kit-playwright';
-
-async function automatizacionSinLogin() {
-  const scanner = await ScannerKit.create({ headless: false });
-
-  // Navegar a la página y restaurar cookies y storage guardados
-  await scanner.goto('https://mi-erp.empresa.com');
-  await scanner.restoreSession('./session-backup.json');
-
-  // Recargar la página: ¡ya estarás autenticado en el panel!
-  await scanner.page.reload();
-  console.log('✓ Sesión restaurada exitosamente.');
-  
-  // Realizar acciones directas sin pasar por el formulario de login...
-  await scanner.close();
-}
-```
-
----
-
-## 📚 Referencia de la API
-
-### `ScannerKit`
+## 📚 Referencia de la API Principal (`ScannerKit`)
 
 | Método | Argumentos | Retorno | Descripción |
 | :--- | :--- | :--- | :--- |
-| `ScannerKit.create(options?)` | `ScannerKitOptions` | `Promise<ScannerKit>` | Factoría estática que instancia Chromium, BrowserContext y aplica las capas de Turbo, Evasión y Recon. |
-| `scanner.goto(url, options?)` | `url: string`, `options?` | `Promise<Response>` | Navega a una URL con esperas optimizadas para portales pesados. |
-| `scanner.findElementAcrossFrames(selector, options?)` | `selector: string`, `FindFrameOptions?` | `Promise<MultiFrameElementResult>` | Busca recursivamente en el DOM raíz y en todos los iframes activos. |
-| `scanner.clickAndSpyApi<T>(target, options?)` | `target: Locator \| string`, `ClickAndSpyOptions?` | `Promise<SpyResult<T>>` | Hace clic y atrapa la respuesta XHR/Fetch de backend con tipado genérico. |
-| `scanner.exportSession(outputPath?)` | `outputPath?: string` | `Promise<SessionBackup>` | Empaqueta cookies, `localStorage` y `sessionStorage`. |
-| `scanner.restoreSession(sessionInput)` | `string \| SessionBackup` | `Promise<void>` | Inyecta cookies y storage previamente exportados. |
-| `scanner.generateReconReport(outputPath?)` | `outputPath?: string` | `ReconReport` | Genera la radiografía técnica y catálogo de APIs auditadas. |
-| `scanner.newPage()` | Ninguno | `Promise<Page>` | Crea una nueva pestaña heredando listeners de evasión y telemetría. |
-| `scanner.close()` | Ninguno | `Promise<void>` | Cierra limpiamente página, contexto y navegador. |
+| `ScannerKit.create(options?)` | `ScannerKitOptions` | `Promise<ScannerKit>` | Inicializa el navegador (Chrome nativo o Chromium), configura observación pasiva y módulos opcionales. |
+| `scanner.goto(url, options?)` | `url: string`, `options?` | `Promise<Response \| null>` | Navega a la URL objetivo registrando la telemetría de carga inicial. |
+| `scanner.findElementAcrossFrames(selector, options?)` | `selector: string`, `FindFrameOptions?` | `Promise<MultiFrameElementResult>` | Busca recursivamente un selector en el DOM principal y en todos los `<iframe>` hijos. |
+| `scanner.clickAndSpyApi<T>(target, options?)` | `target: Locator \| string`, `ClickAndSpyOptions?` | `Promise<SpyResult<T>>` | Ejecuta el clic y captura en paralelo la respuesta XHR/Fetch correspondiente. |
+| `scanner.exportAllArtifacts(outputDir?, category?)` | `outputDir?: string`, `category?: string` | `Promise<ExportArtifactsResult>` | Exporta los 5 archivos del blueprint dentro de `output/<target>/[category]/`. |
+| `scanner.resolveTargetOutputDir(customDir?, customCategory?)` | `customDir?: string`, `customCategory?: string` | `string` | Resuelve y crea la ruta sanitizada del directorio de salida para el dominio/IP actual. |
+| `scanner.exportSession(outputPath?)` | `outputPath?: string` | `Promise<SessionBackup>` | Extrae cookies, `localStorage` y `sessionStorage`. |
+| `scanner.restoreSession(sessionInput)` | `string \| SessionBackup` | `Promise<void>` | Inyecta cookies y almacenamiento web desde un respaldo previo. |
+| `scanner.generateReconReport(outputPath?)` | `outputPath?: string` | `ReconReport` | Genera el informe de red, tokens y `optimizationBlueprint`. |
+| `scanner.close(options?)` | `{ exportArtifacts?: boolean }` | `Promise<void>` | Exporta artefactos pendientes (si `autoExportOnClose` está activo) y cierra el navegador. |
 
 ---
 
-## 📂 Estructura del Repositorio
+## 📂 Estructura del Proyecto
 
-```
+```text
 scanner-kit-playwright/
-├── .env.example                 # Plantilla de variables de entorno
-├── .gitignore                   # Protección de credenciales y artefactos generados
-├── LICENSE                      # Licencia MIT
-├── package.json                 # Scripts y dependencias del paquete
-├── tsconfig.json                # Configuración TypeScript ES2022 estricta
-├── README.md                    # Documentación técnica completa
-├── src/
-│   ├── index.ts                 # Punto de entrada y re-exports de la librería
-│   ├── scanner-kit.ts           # Clase principal orquestadora
-│   ├── types/
-│   │   └── index.ts             # Interfaces y tipado TypeScript estricto
-│   ├── modules/
-│   │   ├── turbo-manager.ts     # Modo Turbo (bloqueo selectivo de recursos pesados)
-│   │   ├── evasion-manager.ts   # Evasión de UI (print, beforeunload, diálogos)
-│   │   ├── frame-explorer.ts    # Explorador Multi-Frame para iframes anidados
-│   │   ├── api-spy.ts           # Espía reactivo de APIs backend (clickAndSpyApi)
-│   │   ├── session-manager.ts   # Exportación e importación integral de sesión
-│   │   └── recon-engine.ts      # Auditor pasivo de red y clasificador de tokens
-│   └── examples/
-│       ├── test-server.ts       # Servidor HTTP local de prueba (ERP simulado)
-│       └── run-scan.ts          # Script ejecutable de escaneo y demostración
-└── dist/                        # Código compilado listo para producción
+├── .env.example                       # Plantilla segura de configuración
+├── .gitignore                         # Protección estricta de .env y carpetas output/
+├── LICENSE                            # Licencia MIT
+├── package.json                       # Scripts y dependencias
+├── tsconfig.json                      # Configuración TypeScript estricta
+├── README.md                          # Documentación principal
+└── src/
+    ├── index.ts                       # Punto de entrada y exportaciones públicas
+    ├── scanner-kit.ts                 # Orquestador principal ScannerKit
+    ├── types/
+    │   └── index.ts                   # Definiciones de tipos e interfaces TypeScript
+    ├── modules/
+    │   ├── recon-engine.ts            # Auditor pasivo de tráfico, WAF y potencial Turbo
+    │   ├── telemetry-extractor.ts     # Captura multi-frame de eventos DOM y red sin huella JS
+    │   ├── selector-evaluator.ts      # Algoritmo de puntuación y recomendación de Locators
+    │   ├── api-contract-builder.ts    # Inferencia automática de esquemas y contratos XHR/Fetch
+    │   ├── route-tracker.ts           # Detección de rutas SPA y sugerencias page.goto()
+    │   ├── session-manager.ts         # Respaldo y restauración de cookies + Web Storage
+    │   ├── session-refresher.ts       # Cliente HTTP con auto-relogin ante 401/403 y Mutex
+    │   ├── frame-explorer.ts          # Buscador recursivo en iframes anidados
+    │   ├── api-spy.ts                 # Captura reactiva clickAndSpyApi
+    │   ├── turbo-manager.ts           # Bloqueo selectivo de recursos pesados para bots
+    │   └── evasion-manager.ts         # Neutralización de print(), beforeunload y diálogos
+    └── examples/
+        ├── run-scan.ts                # CLI interactivo de escaneo y generación de blueprint
+        ├── test-server.ts             # Servidor ERP local simulado para pruebas
+        └── verify-e2e.ts              # Suite de verificación end-to-end automatizada
 ```
 
 ---
 
-## 🛠️ Comandos Disponibles
+## 🛠️ Scripts Disponibles
 
-- `pnpm scan`: Ejecuta el escáner de reconocimiento según la configuración de `.env`.
-- `pnpm build`: Compila los archivos TypeScript a JavaScript en `./dist` con archivos `.d.ts`.
-- `pnpm typecheck`: Valida los tipos TypeScript en modo estricto sin emitir código.
+- `pnpm scan`: Inicia el escáner en modo interactivo pasivo sobre la `TARGET_URL` configurada en `.env`.
+- `pnpm verify`: Ejecuta la suite de verificación E2E contra el servidor local de prueba.
+- `pnpm build`: Compila el proyecto TypeScript en `./dist` con declaraciones de tipos (`.d.ts`).
+- `pnpm typecheck`: Verifica el tipado estático de todo el repositorio sin emitir archivos.
 
 ---
 
-## 🤝 Contribuciones
+## 🔒 Seguridad y Privacidad de Datos
 
-Las contribuciones son bienvenidas:
-1. Haz un Fork del repositorio.
-2. Crea una rama para tu feature (`git checkout -b feature/nueva-capacidad`).
-3. Confirma tus cambios (`git commit -m 'feat: añadir soporte para X'`).
-4. Sube la rama (`git push origin feature/nueva-capacidad`).
-5. Abre un Pull Request.
+El archivo [`.gitignore`](.gitignore) está configurado para **bloquear la subida de cualquier dato sensible o artefacto de escaneo**:
+- `.env` y `.env.*` (URLs privadas, credenciales o configuraciones locales).
+- `output/`, `results/`, `session-backup.json`, `recon-report.json`, `execution-sequence.json`, `selectors-map.json` y `api-contracts.json` (cookies de sesión, tokens JWT, payloads o datos de negocio capturados durante los escaneos).
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto está bajo la Licencia **MIT**. Consulta el archivo [LICENSE](LICENSE) para más detalles.
+Distribuido bajo la Licencia **MIT**. Consulta el archivo [LICENSE](LICENSE) para más información.
