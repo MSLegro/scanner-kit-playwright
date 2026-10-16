@@ -164,17 +164,17 @@ TARGET_CATEGORY=
 Puedes pasar la URL objetivo (y opcionalmente una categoría) directamente en el comando sin necesidad de editar el `.env`:
 
 ```bash
-# Usando el flag --url=
+# Usando el flag --url= (o su versión corta --u=)
 pnpm scan --url=https://mi-portal-objetivo.com/home
 
-# Especificando además una subcarpeta/categoría para el reporte
-pnpm scan --url=https://mi-portal-objetivo.com/home --category=autorizaciones
+# Especificando además una subcarpeta/categoría (--category= o --cat=)
+pnpm scan --u=https://mi-portal-objetivo.com/home --cat=autorizaciones
 
 # O tomando TARGET_URL directamente desde tu archivo .env
 pnpm scan
 ```
 
-*(También soporta `--url https://...`, `-u https://...` o la URL directa como argumento posicional).*
+*(Soporta indistintamente `--url=`, `--u=`, `-u=`, `--category=`, `--cat=`, `--c=` o separados por espacio).*
 
 **Flujo de trabajo recomendado:**
 1. Se abrirá el navegador en **Modo Observador Pasivo Sigiloso**.

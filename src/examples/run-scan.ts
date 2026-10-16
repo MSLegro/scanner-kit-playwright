@@ -54,32 +54,49 @@ async function main() {
     console.log('ℹ️ Entorno sin servidor gráfico accesible (sandbox/CI). Ejecutando en modo headless para garantizar estabilidad.');
   }
 
-  // 1. Parser flexible de argumentos CLI (--url=..., --url ..., -u ..., --category=..., o URL posicional)
+  // 1. Parser flexible de argumentos CLI (--url=..., --u=..., -u=..., --cat=..., --c=..., o URL posicional)
   const rawArgs = process.argv.slice(2);
   let cliUrl: string | undefined;
   let cliCategory: string | undefined;
 
   for (let i = 0; i < rawArgs.length; i++) {
     const arg = rawArgs[i];
-    if (arg.startsWith('--url=') || arg.startsWith('--target=')) {
+    if (
+      arg.startsWith('--url=') ||
+      arg.startsWith('--u=') ||
+      arg.startsWith('-u=') ||
+      arg.startsWith('--target=')
+    ) {
       cliUrl = arg.split('=').slice(1).join('=').trim();
-    } else if ((arg === '--url' || arg === '-u' || arg === '--target') && rawArgs[i + 1]) {
+    } else if ((arg === '--url' || arg === '--u' || arg === '-u' || arg === '--target') && rawArgs[i + 1]) {
       cliUrl = rawArgs[++i].trim();
-    } else if (arg.startsWith('--category=') || arg.startsWith('--cat=')) {
+    } else if (
+      arg.startsWith('--category=') ||
+      arg.startsWith('--cat=') ||
+      arg.startsWith('-cat=') ||
+      arg.startsWith('--c=') ||
+      arg.startsWith('-c=')
+    ) {
       cliCategory = arg.split('=').slice(1).join('=').trim();
-    } else if ((arg === '--category' || arg === '-c' || arg === '--cat') && rawArgs[i + 1]) {
+    } else if (
+      (arg === '--category' || arg === '--cat' || arg === '-cat' || arg === '--c' || arg === '-c') &&
+      rawArgs[i + 1]
+    ) {
       cliCategory = rawArgs[++i].trim();
     } else if (!arg.startsWith('-') && (arg.startsWith('http://') || arg.startsWith('https://'))) {
       cliUrl = arg.trim();
     }
   }
 
-  // Fallback por si el gestor de paquetes (npm/pnpm) captura --url=... en npm_config_url
-  if (!cliUrl && process.env.npm_config_url && process.env.npm_config_url !== 'true') {
-    cliUrl = process.env.npm_config_url.trim();
+  // Fallback por si el gestor de paquetes (npm/pnpm) captura flags en npm_config_*
+  const npmUrl = process.env.npm_config_url || process.env.npm_config_u || process.env.npm_config_target;
+  if (!cliUrl && npmUrl && npmUrl !== 'true') {
+    cliUrl = npmUrl.trim();
   }
-  if (!cliCategory && process.env.npm_config_category && process.env.npm_config_category !== 'true') {
-    cliCategory = process.env.npm_config_category.trim();
+  const npmCategory =
+    process.env.npm_config_category || process.env.npm_config_cat || process.env.npm_config_c;
+  if (!cliCategory && npmCategory && npmCategory !== 'true') {
+    cliCategory = npmCategory.trim();
   }
 
   // Normalizar protocolo si el usuario pasó --url=dominio.com sin http(s)://
