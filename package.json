@@ -1,13 +1,23 @@
 {
   "name": "scanner-kit-playwright",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Universal Web Reconnaissance and Automation Kit for Playwright & TypeScript",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "scanner-kit": "dist/cli.js",
+    "scanner-kit-playwright": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "scan": "ts-node src/examples/run-scan.ts",
+    "prepare": "pnpm build",
+    "scan": "ts-node src/cli.ts",
     "verify": "ts-node src/examples/verify-suite.ts",
     "prepublishOnly": "pnpm build"
   },

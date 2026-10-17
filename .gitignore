@@ -35,9 +35,10 @@ Thumbs.db
 *.swp
 *.swo
 
-# Directorios temporales de pruebas y salidas de escaneo
+# Directorios temporales de pruebas y salidas de escaneo / blueprints
 tmp/
 temp/
 temp-test-output/
 output/
+blueprint/
 results/

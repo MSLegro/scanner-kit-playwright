@@ -15,6 +15,57 @@ import { SessionBackup } from '../types';
  */
 export class SessionManager {
   /**
+   * Cache en memoria del último almacenamiento local y de sesión válido por página.
+   * Permite recuperar los datos íntegros incluso si el usuario cierra la ventana con la [X] del ratón.
+   */
+  private static _storageCache = new WeakMap<Page, { local: Record<string, string>; session: Record<string, string> }>();
+
+  /**
+   * Vincula escuchadores a la página para mantener actualizado el snapshot en memoria
+   * de localStorage y sessionStorage de forma reactiva y sin bloquear la navegación.
+   *
+   * @param page Instancia de la página activa.
+   */
+  public static trackPageStorage(page: Page): void {
+    const updateSnapshot = async () => {
+      if (page.isClosed()) return;
+      try {
+        const snapshot = await page.evaluate(() => {
+          const getStorageData = (storage: Storage): Record<string, string> => {
+            const result: Record<string, string> = {};
+            try {
+              for (let i = 0; i < storage.length; i++) {
+                const key = storage.key(i);
+                if (key !== null) {
+                  result[key] = storage.getItem(key) ?? '';
+                }
+              }
+            } catch {}
+            return result;
+          };
+          return {
+            local: getStorageData(window.localStorage),
+            session: getStorageData(window.sessionStorage)
+          };
+        });
+        SessionManager._storageCache.set(page, snapshot);
+      } catch {}
+    };
+
+    page.on('framenavigated', () => {
+      // Actualizar snapshot de storage al cambiar o cargar una vista
+      setTimeout(updateSnapshot, 200);
+    });
+
+    page.on('load', () => {
+      setTimeout(updateSnapshot, 300);
+    });
+
+    // Snapshot inicial
+    setTimeout(updateSnapshot, 500);
+  }
+
+  /**
    * Extrae cookies, localStorage y sessionStorage de la página actual y opcionalmente
    * guarda el volcado en un archivo JSON en disco.
    *
@@ -25,7 +76,7 @@ export class SessionManager {
   public static async exportSession(page: Page, outputPath?: string): Promise<SessionBackup> {
     const context = page.context();
 
-    // 1. Extracción de Cookies desde el BrowserContext
+    // 1. Extracción de Cookies desde el BrowserContext (permanece vivo aún si la pestaña cerró)
     const rawCookies = await context.cookies();
     const cookies: SessionBackup['cookies'] = rawCookies.map((c) => ({
       name: c.name,
@@ -38,20 +89,24 @@ export class SessionManager {
       sameSite: c.sameSite as 'Strict' | 'Lax' | 'None'
     }));
 
-    // 2. Extracción de localStorage y sessionStorage (si la página sigue abierta)
-    let storageSnapshot = { local: {} as Record<string, string>, session: {} as Record<string, string> };
+    // 2. Extracción de localStorage y sessionStorage
+    // Si la página sigue abierta, intenta tomar un snapshot en caliente; si ya se cerró, usa la caché en memoria.
+    const cached = SessionManager._storageCache.get(page) || { local: {}, session: {} };
+    let storageSnapshot = { ...cached };
 
     if (!page.isClosed()) {
       try {
-        storageSnapshot = await page.evaluate(() => {
+        const fresh = await page.evaluate(() => {
           const getStorageData = (storage: Storage): Record<string, string> => {
             const result: Record<string, string> = {};
-            for (let i = 0; i < storage.length; i++) {
-              const key = storage.key(i);
-              if (key !== null) {
-                result[key] = storage.getItem(key) ?? '';
+            try {
+              for (let i = 0; i < storage.length; i++) {
+                const key = storage.key(i);
+                if (key !== null) {
+                  result[key] = storage.getItem(key) ?? '';
+                }
               }
-            }
+            } catch {}
             return result;
           };
 
@@ -60,9 +115,9 @@ export class SessionManager {
             session: getStorageData(window.sessionStorage)
           };
         });
-      } catch {
-        console.warn('[SessionManager] La ventana fue cerrada antes de leer localStorage/sessionStorage. Se exportaron únicamente cookies.');
-      }
+        storageSnapshot = fresh;
+        SessionManager._storageCache.set(page, fresh);
+      } catch {}
     }
 
     const sessionData: SessionBackup = {

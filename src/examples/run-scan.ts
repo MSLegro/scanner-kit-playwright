@@ -54,10 +54,11 @@ async function main() {
     console.log('ℹ️ Entorno sin servidor gráfico accesible (sandbox/CI). Ejecutando en modo headless para garantizar estabilidad.');
   }
 
-  // 1. Parser flexible de argumentos CLI (--url=..., --u=..., -u=..., --cat=..., --c=..., o URL posicional)
+  // 1. Parser flexible de argumentos CLI (--url=..., --u=..., --out=..., --blueprint=..., --cat=..., --c=..., o URL posicional)
   const rawArgs = process.argv.slice(2);
   let cliUrl: string | undefined;
   let cliCategory: string | undefined;
+  let cliOutputDir: string | undefined;
 
   for (let i = 0; i < rawArgs.length; i++) {
     const arg = rawArgs[i];
@@ -83,6 +84,14 @@ async function main() {
       rawArgs[i + 1]
     ) {
       cliCategory = rawArgs[++i].trim();
+    } else if (
+      arg.startsWith('--out=') ||
+      arg.startsWith('--blueprint=') ||
+      arg.startsWith('-o=')
+    ) {
+      cliOutputDir = arg.split('=').slice(1).join('=').trim();
+    } else if ((arg === '--out' || arg === '--blueprint' || arg === '-o') && rawArgs[i + 1]) {
+      cliOutputDir = rawArgs[++i].trim();
     } else if (!arg.startsWith('-') && (arg.startsWith('http://') || arg.startsWith('https://'))) {
       cliUrl = arg.trim();
     }
@@ -97,6 +106,11 @@ async function main() {
     process.env.npm_config_category || process.env.npm_config_cat || process.env.npm_config_c;
   if (!cliCategory && npmCategory && npmCategory !== 'true') {
     cliCategory = npmCategory.trim();
+  }
+  const npmOutputDir =
+    process.env.npm_config_out || process.env.npm_config_blueprint || process.env.npm_config_o;
+  if (!cliOutputDir && npmOutputDir && npmOutputDir !== 'true') {
+    cliOutputDir = npmOutputDir.trim();
   }
 
   // Normalizar protocolo si el usuario pasó --url=dominio.com sin http(s)://
@@ -113,7 +127,7 @@ async function main() {
 
   if (customUrl) {
     targetUrl = customUrl;
-    console.log(`[1/6] URL objetivo configurada (${cliUrl ? 'desde CLI (--url)' : 'desde .env'}): ${targetUrl}`);
+    console.log(`[1/6] URL objetivo configurada (${cliUrl ? 'desde CLI (--u)' : 'desde .env'}): ${targetUrl}`);
   } else {
     // Iniciar servidor de prueba local si no se definió URL externa
     server = new TestServer(3456);
@@ -126,7 +140,11 @@ async function main() {
   console.log(
     `[2/6] Inicializando ScannerKit (headless: ${isHeadless}, modo: Observador Pasivo Cero-Intrusión)...`
   );
-  const outputDir = process.env.OUTPUT_DIR || './output';
+  const resolvedBlueprintDir =
+    cliOutputDir ||
+    process.env.BLUEPRINT_DIR ||
+    process.env.OUTPUT_DIR ||
+    './blueprint';
   const targetCategory = cliCategory || process.env.TARGET_CATEGORY?.trim() || undefined;
 
   const scanner = await ScannerKit.create({
@@ -135,7 +153,7 @@ async function main() {
     turboMode,
     evasionMode,
     reconMode,
-    outputDir,
+    blueprintDir: resolvedBlueprintDir,
     targetCategory,
     viewport: isHeadless ? { width: 1280, height: 720 } : null
   });
@@ -160,21 +178,18 @@ async function main() {
         console.log('  • ReconEngine y TelemetryExtractor están auditando pasivamente en segundo plano.');
         console.log('  • No se bloquean imágenes ni se alteran prototipos para evitar detección Anti-Bot.\n');
         console.log('👉 ¿Listo para guardar sesión y generar el blueprint de automatización?');
-        console.log('   Presiona [ENTER] aquí en la terminal mientras la ventana sigue abierta.');
-        console.log('   (⚠️ Si cierras la ventana con la [X] del ratón, el navegador destruirá el DOM antes de extraer localStorage/sessionStorage).\n');
+        console.log('   Elige cualquiera de estas dos opciones para finalizar:');
+        console.log('   1. Simplemente cierra la ventana del navegador con la [X] del ratón.');
+        console.log('   2. O presiona [ENTER] aquí en la terminal.\n');
 
         // Esperar a que el usuario presione Enter O cierre la ventana del navegador
         await new Promise<void>((resolve) => {
           let resolved = false;
 
-          const onStdinData = () => {
-            console.log('\n[Info] Finalización manual solicitada desde la terminal.');
-            finish();
-          };
-
-          const finish = () => {
+          const finish = (source: string) => {
             if (!resolved) {
               resolved = true;
+              console.log(`\n[Info] Finalización detectada (${source}). Consolidando telemetría...`);
               try {
                 process.stdin.removeListener('data', onStdinData);
                 process.stdin.pause();
@@ -183,10 +198,13 @@ async function main() {
             }
           };
 
+          const onStdinData = () => {
+            finish('tecla [ENTER] en la terminal');
+          };
+
           // Si el usuario cierra la ventana del navegador con el ratón
           scanner.page.on('close', () => {
-            console.log('\n[Info] Ventana del navegador cerrada por el usuario.');
-            finish();
+            finish('cierre de ventana con la [X]');
           });
 
           // Si el usuario presiona Enter en la terminal

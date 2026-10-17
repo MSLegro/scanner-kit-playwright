@@ -43,8 +43,13 @@ export interface ScannerKitOptions {
   telemetryMode?: boolean;
 
   /**
-   * Directorio base de salida para los artefactos exportados.
-   * Por defecto: './output'.
+   * Directorio base de salida para los artefactos y blueprint exportados.
+   * Por defecto: './blueprint'.
+   */
+  blueprintDir?: string;
+
+  /**
+   * Alias de compatibilidad para blueprintDir.
    */
   outputDir?: string;
 

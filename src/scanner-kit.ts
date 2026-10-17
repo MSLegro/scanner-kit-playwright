@@ -167,6 +167,9 @@ export class ScannerKit {
       await telemetryExtractor.attach(page, context);
     }
 
+    // 9. Registrar seguimiento reactivo de storage (permite guardar cookies y storage aun si se cierra con la [X])
+    SessionManager.trackPageStorage(page);
+
     return new ScannerKit(browser, context, page, options, turboManager, evasionManager, reconEngine, telemetryExtractor);
   }
 
@@ -220,6 +223,7 @@ export class ScannerKit {
     if (this._telemetryExtractor) {
       await this._telemetryExtractor.attach(page, this._context);
     }
+    SessionManager.trackPageStorage(page);
     return page;
   }
 
@@ -290,16 +294,23 @@ export class ScannerKit {
    * y categoría opcional, asegurando nombres válidos y compatibles con el sistema de archivos (Windows / Linux).
    *
    * Ejemplo:
-   *   - Base: './output'
+   *   - Base: './blueprint' (en el directorio actual process.cwd() donde se corre el CLI)
    *   - URL: 'http://localhost:3456/portal'
-   *   - Resultado: 'C:/.../output/localhost_3456'
-   *   - Con categoría 'informes': 'C:/.../output/localhost_3456/informes'
+   *   - Resultado: 'C:/.../blueprint/localhost_3456'
+   *   - Con categoría 'informes': 'C:/.../blueprint/localhost_3456/informes'
    *
-   * @param customDir Directorio base opcional (sobreescribe options.outputDir).
+   * @param customDir Directorio base opcional (sobreescribe options.blueprintDir / options.outputDir).
    * @param customCategory Subcarpeta o categoría opcional (ej. 'informes', 'login_flow').
    */
   public resolveTargetOutputDir(customDir?: string, customCategory?: string): string {
-    const baseDir = path.resolve(customDir || this._options.outputDir || './output');
+    const rawBase =
+      customDir ||
+      this._options.blueprintDir ||
+      this._options.outputDir ||
+      process.env.BLUEPRINT_DIR ||
+      process.env.OUTPUT_DIR ||
+      './blueprint';
+    const baseDir = path.resolve(process.cwd(), rawBase);
     const shouldGroup = this._options.groupByTarget !== false;
 
     if (!shouldGroup) {
@@ -348,9 +359,9 @@ export class ScannerKit {
    * 4. selectors-map.json (matriz de robustez y resiliencia de selectores Playwright)
    * 5. api-contracts.json (contratos y esquemas tipados de APIs XHR/Fetch)
    *
-   * Los archivos se agrupan automáticamente en carpetas por target (ej: output/localhost_3456/).
+   * Los archivos se agrupan automáticamente en carpetas por target (ej: blueprint/localhost_3456/).
    *
-   * @param outputDir Directorio de salida opcional (por defecto options.outputDir o './output').
+   * @param outputDir Directorio de salida opcional (por defecto options.blueprintDir o './blueprint').
    * @param category Subcarpeta o categoría opcional (ej. 'informes').
    */
   public async exportAllArtifacts(
@@ -362,7 +373,7 @@ export class ScannerKit {
       outputDirectory: targetDir
     };
 
-    console.log(`\n[ScannerKit] 📦 Consolidando y exportando artefactos en: ${targetDir}`);
+    console.log(`\n[ScannerKit] 📦 Consolidando y exportando blueprint en: ${targetDir}`);
 
     // 1. Respaldo de Sesión
     try {
