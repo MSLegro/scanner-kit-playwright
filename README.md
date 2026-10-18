@@ -7,8 +7,7 @@
 *CLI autónomo y agnóstico para auditoría e ingeniería inversa de portales corporativos complejos. Genera planos técnicos (blueprints) estructurados para crear bots RPA rápidos, precisos y desacoplados.*
 
 [![CI](https://github.com/MSLegro/scanner-kit-playwright/actions/workflows/ci.yml/badge.svg)](https://github.com/MSLegro/scanner-kit-playwright/actions/workflows/ci.yml)
-[![Release](https://github.com/MSLegro/scanner-kit-playwright/actions/workflows/release.yml/badge.svg)](https://github.com/MSLegro/scanner-kit-playwright/actions/workflows/release.yml)
-[![Version](https://img.shields.io/badge/version-v1.1.0-blue)](https://github.com/MSLegro/scanner-kit-playwright/releases)
+[![Release](https://img.shields.io/badge/release-v1.1.0-blue?logo=github)](https://github.com/MSLegro/scanner-kit-playwright/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-1.49+-orange.svg)](https://playwright.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
