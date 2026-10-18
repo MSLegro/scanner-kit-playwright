@@ -10,6 +10,8 @@ export { SessionManager } from './modules/session-manager';
 export { ReconEngine } from './modules/recon-engine';
 export { TelemetryExtractor } from './modules/telemetry-extractor';
 export { SessionRefresher } from './modules/session-refresher';
+export { FormAnalyzer } from './modules/form-analyzer';
+export { AgentBriefing, AgentBriefingInput } from './modules/agent-briefing';
 
 // Re-export de tipos e interfaces TypeScript
 export * from './types';

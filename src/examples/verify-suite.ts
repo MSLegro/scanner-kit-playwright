@@ -55,6 +55,15 @@ async function runVerification() {
     await scanner.page.locator('#btn-fetch-invoices').click();
     await scanner.page.waitForTimeout(500);
 
+    console.log('  -> Simulando apertura de ventana emergente (Popup)...');
+    const [popup] = await Promise.all([
+      scanner.page.waitForEvent('popup'),
+      scanner.page.locator('#btn-open-popup').click()
+    ]);
+    await popup.waitForLoadState('domcontentloaded');
+    console.log('  ✓ Ventana emergente detectada y cargada:', popup.url());
+    await popup.close();
+
     console.log('  -> Simulando cambio de ruta SPA (#/contabilidad/reportes)...');
     await scanner.page.evaluate(() => {
       window.location.hash = '#/contabilidad/reportes?year=2026';
@@ -79,7 +88,10 @@ async function runVerification() {
       'selectors-map.json',
       'api-contracts.json',
       'session-backup.json',
-      'recon-report.json'
+      'recon-report.json',
+      'form-schema.json',
+      'prompt-context.md',
+      'accessibility-tree.json'
     ];
 
     for (const f of expectedFiles) {
@@ -94,10 +106,32 @@ async function runVerification() {
     // Validar contenido de execution-sequence.json
     const seqData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'execution-sequence.json'), 'utf-8'));
     console.log(`  ✓ execution-sequence.json: ${seqData.actions.length} acciones capturadas`);
+    if (seqData.popupsDetected && seqData.popupsDetected.length > 0) {
+      console.log(`  ✓ Multi-Tab Tracker detectó popup: "${seqData.popupsDetected[0].url}"`);
+    } else {
+      throw new Error('[FAIL] No se registró el evento de popup en execution-sequence.json');
+    }
     if (seqData.routeDirectNavigations.length > 0) {
       console.log(`  ✓ RouteTracker detectó ruta directa: "${seqData.routeDirectNavigations[0].route}"`);
       console.log(`    Sugerencia generada: ${seqData.routeDirectNavigations[0].recommendedGoto}`);
     }
+
+    // Validar contenido de form-schema.json
+    const formData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'form-schema.json'), 'utf-8'));
+    console.log(`  ✓ form-schema.json: ${formData.totalFields} campos catalogados en ${formData.totalForms} formulario(s)`);
+    const formFields = formData.forms['form-afiliados'] || [];
+    const selectField = formFields.find((f: any) => f.tag === 'select');
+    if (!selectField || !selectField.options || selectField.options.length < 4) {
+      throw new Error('[FAIL] FormAnalyzer no capturó las opciones del dropdown en form-schema.json');
+    }
+    console.log(`  ✓ FormAnalyzer extrajo ${selectField.options.length} opciones válidas de "${selectField.label}":`, selectField.options.map((o: any) => o.value).join(', '));
+
+    // Validar contenido de prompt-context.md
+    const promptContext = fs.readFileSync(path.join(artifacts.outputDirectory, 'prompt-context.md'), 'utf-8');
+    if (!promptContext.includes('Briefing Técnico para Agente de IA') || !promptContext.includes('Diccionario de Campos de Formulario')) {
+      throw new Error('[FAIL] prompt-context.md no contiene las secciones esperadas del briefing');
+    }
+    console.log(`  ✓ prompt-context.md verificado con éxito (briefing ejecutivo generado para Agentes)`);
 
     // Validar contenido de selectors-map.json
     const selData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'selectors-map.json'), 'utf-8'));

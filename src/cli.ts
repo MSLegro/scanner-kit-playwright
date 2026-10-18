@@ -14,7 +14,10 @@ import { ScannerKit } from './scanner-kit';
 import { TestServer } from './examples/test-server';
 
 // Cargar variables de entorno desde .env si existe en el directorio de ejecución actual
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+const envPath = path.resolve(process.cwd(), '.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath, quiet: true } as any);
+}
 
 function getPackageVersion(): string {
   try {
@@ -366,6 +369,12 @@ async function runCli() {
     console.log('\n===============================================================');
     console.log('🎉 Blueprint de reconocimiento completado.');
     console.log(`📁 Directorio: ${exported.outputDirectory}`);
+    if (exported.promptContextFile) {
+      console.log(`🤖 Briefing para Agente de IA: ${exported.promptContextFile}`);
+    }
+    if (exported.formSchemaFile) {
+      console.log(`📋 Esquema de Formularios: ${exported.formSchemaFile}`);
+    }
     console.log('===============================================================\n');
 
     await scanner.close({ exportArtifacts: false });

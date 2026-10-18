@@ -8,12 +8,18 @@ import { ReconEngine } from './modules/recon-engine';
 import { SessionManager } from './modules/session-manager';
 import { TelemetryExtractor } from './modules/telemetry-extractor';
 import { TurboManager, TurboOptions } from './modules/turbo-manager';
+import { FormAnalyzer } from './modules/form-analyzer';
+import { AgentBriefing } from './modules/agent-briefing';
 import {
+  ApiContractsReport,
   ClickAndSpyOptions,
+  ExecutionSequenceReport,
   ExportArtifactsResult,
+  FormSchemaReport,
   MultiFrameElementResult,
   ReconReport,
   ScannerKitOptions,
+  SelectorsMapReport,
   SessionBackup,
   SpyResult
 } from './types';
@@ -33,6 +39,7 @@ export class ScannerKit {
   private _evasionManager?: EvasionManager;
   private _reconEngine?: ReconEngine;
   private _telemetryExtractor?: TelemetryExtractor;
+  private _formAnalyzer: FormAnalyzer;
   private _options: ScannerKitOptions;
 
   private constructor(
@@ -53,6 +60,7 @@ export class ScannerKit {
     this._evasionManager = evasionManager;
     this._reconEngine = reconEngine;
     this._telemetryExtractor = telemetryExtractor;
+    this._formAnalyzer = new FormAnalyzer();
   }
 
   /**
@@ -193,6 +201,10 @@ export class ScannerKit {
 
   public get telemetry(): TelemetryExtractor | undefined {
     return this._telemetryExtractor;
+  }
+
+  public get formAnalyzer(): FormAnalyzer {
+    return this._formAnalyzer;
   }
 
   // --- Funcionalidades Nativas ---
@@ -375,10 +387,18 @@ export class ScannerKit {
 
     console.log(`\n[ScannerKit] 📦 Consolidando y exportando blueprint en: ${targetDir}`);
 
+    let sessionBackup: SessionBackup | null = null;
+    let reconReport: ReconReport | null = null;
+    let sequenceReport: ExecutionSequenceReport | null = null;
+    let selectorsReport: SelectorsMapReport | null = null;
+    let contractsReport: ApiContractsReport | null = null;
+    let formReport: FormSchemaReport | null = null;
+    let accessibilityData: unknown = null;
+
     // 1. Respaldo de Sesión
     try {
       const sessionPath = path.join(targetDir, 'session-backup.json');
-      await this.exportSession(sessionPath);
+      sessionBackup = await this.exportSession(sessionPath);
       results.sessionFile = sessionPath;
     } catch (e) {
       console.warn('[ScannerKit] No se pudo exportar sesión:', (e as Error).message);
@@ -388,7 +408,7 @@ export class ScannerKit {
     if (this._reconEngine) {
       try {
         const reconPath = path.join(targetDir, 'recon-report.json');
-        this.generateReconReport(reconPath);
+        reconReport = this.generateReconReport(reconPath);
         results.reconReportFile = reconPath;
       } catch (e) {
         console.warn('[ScannerKit] No se pudo exportar reporte de reconocimiento:', (e as Error).message);
@@ -402,9 +422,9 @@ export class ScannerKit {
         const selectorsPath = path.join(targetDir, 'selectors-map.json');
         const contractsPath = path.join(targetDir, 'api-contracts.json');
 
-        this._telemetryExtractor.generateExecutionSequence(sequencePath);
-        this._telemetryExtractor.generateSelectorsMap(selectorsPath);
-        this._telemetryExtractor.generateApiContracts(contractsPath);
+        sequenceReport = this._telemetryExtractor.generateExecutionSequence(sequencePath);
+        selectorsReport = this._telemetryExtractor.generateSelectorsMap(selectorsPath);
+        contractsReport = this._telemetryExtractor.generateApiContracts(contractsPath);
 
         results.sequenceFile = sequencePath;
         results.selectorsFile = selectorsPath;
@@ -412,6 +432,90 @@ export class ScannerKit {
       } catch (e) {
         console.warn('[ScannerKit] No se pudo exportar telemetría:', (e as Error).message);
       }
+    }
+
+    // 4. Esquema de Formularios y Catálogo de Desplegables (FormAnalyzer)
+    try {
+      formReport = this._formAnalyzer.getReport();
+      if (!this._page.isClosed()) {
+        formReport = await this._formAnalyzer.analyzePageForms(this._page).catch(() => formReport);
+      }
+      if (formReport) {
+        const formSchemaPath = path.join(targetDir, 'form-schema.json');
+        this._formAnalyzer.generateFormSchema(formSchemaPath, formReport);
+        results.formSchemaFile = formSchemaPath;
+      }
+    } catch (e) {
+      console.warn('[ScannerKit] No se pudo exportar esquema de formularios:', (e as Error).message);
+    }
+
+    // 5. Árbol de Accesibilidad (Accessibility Snapshot)
+    if (!this._page.isClosed()) {
+      try {
+        let ariaSnapshotText: string | null = null;
+        try {
+          if (typeof this._page.locator === 'function') {
+            ariaSnapshotText = await this._page.locator(':root').ariaSnapshot().catch(() => null);
+          }
+        } catch {
+          // ignore
+        }
+
+        let axTreeNodes: any = null;
+        try {
+          const client = await this._page.context().newCDPSession(this._page).catch(() => null);
+          if (client) {
+            const cdpResult = await client.send('Accessibility.getFullAXTree').catch(() => null);
+            axTreeNodes = cdpResult?.nodes || null;
+            await client.detach().catch(() => null);
+          }
+        } catch {
+          // CDP might not be supported in WebKit/Firefox
+        }
+
+        let legacySnapshot: any = null;
+        try {
+          legacySnapshot = await (this._page as any).accessibility?.snapshot?.().catch(() => null);
+        } catch {
+          // ignore
+        }
+
+        if (ariaSnapshotText || axTreeNodes || legacySnapshot) {
+          accessibilityData = {
+            capturedAt: new Date().toISOString(),
+            url: this._page.url(),
+            ariaSnapshot: ariaSnapshotText || undefined,
+            nodesCount: axTreeNodes ? axTreeNodes.length : undefined,
+            nodes: axTreeNodes || undefined,
+            legacyTree: legacySnapshot || undefined
+          };
+          const a11yPath = path.join(targetDir, 'accessibility-tree.json');
+          fs.writeFileSync(a11yPath, JSON.stringify(accessibilityData, null, 2), 'utf-8');
+          results.accessibilityTreeFile = a11yPath;
+          console.log(`[ScannerKit] Árbol de accesibilidad guardado en: ${a11yPath}`);
+        }
+      } catch (e) {
+        console.warn('[ScannerKit] No se pudo exportar árbol de accesibilidad:', (e as Error).message);
+      }
+    }
+
+    // 6. Briefing Consolidado para Agente de IA (prompt-context.md)
+    try {
+      const promptContextPath = path.join(targetDir, 'prompt-context.md');
+      AgentBriefing.savePromptContext(promptContextPath, {
+        targetUrl: this._page.url(),
+        outputDirectory: targetDir,
+        reconReport,
+        sessionBackup,
+        executionSequence: sequenceReport,
+        selectorsMap: selectorsReport,
+        apiContracts: contractsReport,
+        formSchema: formReport,
+        accessibilityTree: accessibilityData
+      });
+      results.promptContextFile = promptContextPath;
+    } catch (e) {
+      console.warn('[ScannerKit] No se pudo generar prompt-context.md:', (e as Error).message);
     }
 
     return results;

@@ -20,7 +20,9 @@
 
 El propósito de **`scanner-kit-playwright`** no es servir de runtime para ejecutar bots, sino ser una **herramienta autónoma de profiling e ingeniería inversa**. Su función es observar cómo un humano interactúa con un portal web y **generar automáticamente el plano técnico (Blueprint)** con todo lo necesario para automatizarlo:
 
-- **100% Desacoplado:** Tus proyectos RPA finales se programan con **Playwright nativo** (o cualquier lenguaje/herramienta) leyendo los archivos JSON del blueprint, sin acoplarse a esta librería.
+- **100% Desacoplado y Listo para Agentes de IA:** Genera un briefing ejecutivo (`prompt-context.md`) diseñado específicamente para que un modelo de lenguaje o Agente de Programación (Cursor, Claude, Antigravity, Copilot) ensamble el bot Playwright aplicando tus reglas de negocio sin alucinaciones ni inventar selectores.
+- **Mapeo Proactivo de Formularios (`form-schema.json`):** Cataloga inputs, áreas de texto y diccionarios completos de opciones en `<select>` (`[{ value, text }]`) con sus `<label>` humanos asociados.
+- **Rastreo Multi-Pestaña y Popups:** Intercepta `context.on('page')` y `page.on('popup')` generando snippets con `page.waitForEvent('popup')`.
 - **Observador Pasivo Sigiloso (Stealth Anti-WAF):** Utiliza Google Chrome oficial con huella TLS genuina, sin bloquear imágenes ni alterar prototipos nativos (`addEventListener`), permitiendo superar **Cloudflare Turnstile, DataDome, Imperva y captchas** de forma natural.
 - **Finalización Cómoda sin Pérdida de Datos:** Puedes explorar libremente y, al terminar, **simplemente cierras la ventana con la `[X]` del ratón** (o presionas `[ENTER]`). El escáner preserva cookies `HttpOnly`, `localStorage` y `sessionStorage` automáticamente.
 
@@ -41,7 +43,7 @@ npm link
 ```
 
 > 💡 **¿Por qué `npm link`?**  
-> Crea un acceso directo en vivo entre tu código local y tu sistema operativo. Si en el futuro agregas nuevas funciones o corriges un selector y corres `pnpm build`, **tu comando global `scanner-kit` se actualiza al instante sin tener que reinstalar nada**.
+> Crea un acceso directo en vivo entre tu código local y tu sistema operativo. Si en el futuro agregas nuevas funciones o mejoras un módulo y corres `pnpm build`, **tu comando global `scanner-kit` se actualiza al instante sin tener que reinstalar nada**.
 
 #### 🔄 Sincronización entre varios dispositivos (Casa ↔ Trabajo)
 Cuando mejores el escáner en un equipo y quieras usarlo en el otro:
@@ -100,25 +102,37 @@ pnpm blueprint --u=https://portal.nuevaeps.com.co/Portal/home.jspx
 
 ---
 
-## 📁 El Resultado: Carpeta `blueprint/`
+## 📁 El Resultado: Carpeta `blueprint/` (8 Artefactos)
 
-Al terminar tu exploración y cerrar la ventana con la **`[X]`** o presionar **`[ENTER]`**, se genera automáticamente la carpeta `./blueprint/` en la raíz de donde ejecutaste el comando:
+Al terminar tu exploración y cerrar la ventana con la **`[X]`** o presionar **`[ENTER]`**, se genera automáticamente la carpeta `./blueprint/<target>/[categoria]/` con **8 archivos de ingeniería inversa**:
 
 ```text
 mi-nuevo-bot/
 ├── package.json
 └── blueprint/
     └── portal.nuevaeps.com.co/
-        ├── recon-report.json       # WAFs detectados, potencial de ahorro Turbo y radiografía de red
-        ├── api-contracts.json      # Contratos XHR/Fetch con payloads y esquemas JSON tipados
-        ├── selectors-map.json      # Matriz de estabilidad de locators (EXCELLENT a FRAGILE)
-        ├── execution-sequence.json # Paso a paso cronológico y sugerencias de rutas page.goto()
-        └── session-backup.json     # Respaldo unificado de cookies HttpOnly, localStorage y sessionStorage
+        ├── prompt-context.md          # 🤖 Briefing ejecutivo en Markdown para Agentes de IA
+        ├── form-schema.json           # 📋 Esquema de formularios y diccionario de opciones <select>
+        ├── accessibility-tree.json    # ♿ Árbol de accesibilidad y roles ARIA nativos
+        ├── execution-sequence.json    # ⏱️ Acciones cronológicas, popups y atajos directos page.goto()
+        ├── selectors-map.json         # 🎯 Matriz de estabilidad de locators (EXCELLENT a FRAGILE)
+        ├── api-contracts.json         # 🌐 Contratos XHR/Fetch con payloads y esquemas JSON tipados
+        ├── recon-report.json          # 🛡️ Diagnóstico de WAFs, potencial de ahorro Turbo y red
+        └── session-backup.json        # 🔑 Respaldo de cookies HttpOnly, localStorage y sessionStorage
 ```
 
 ---
 
-## 🤖 Cómo Usar el Blueprint en tu Bot Final (Cero Acoplamiento)
+## 🤖 Cómo Usar el Blueprint para Crear Bots con tu Agente de IA
+
+El archivo **`prompt-context.md`** está redactado y formateado como una orden de trabajo lista para que se la pegues directamente a tu Agente de IA (Cursor, Claude, Antigravity, ChatGPT, Copilot). 
+
+El archivo ya le explica al agente:
+1. Las precauciones anti-bot a tomar.
+2. Cómo saltarse menús lentos usando las rutas descubiertas (`page.goto`).
+3. El diccionario exacto de opciones para selects y campos de formulario.
+4. Cómo hacer bypass de la interfaz usando llamadas REST directas (`page.request.post()`).
+5. Los selectores Playwright con fiabilidad `HIGH` y `EXCELLENT`.
 
 En tu proyecto final, solo instalas Playwright nativo:
 

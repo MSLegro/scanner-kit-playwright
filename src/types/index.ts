@@ -121,6 +121,21 @@ export interface ExportArtifactsResult {
    * Ruta a los contratos de APIs XHR/Fetch descubiertos (api-contracts.json).
    */
   contractsFile?: string;
+
+  /**
+   * Ruta al esquema y diccionario de campos de formulario (form-schema.json).
+   */
+  formSchemaFile?: string;
+
+  /**
+   * Ruta al briefing ejecutivo en Markdown para el Agente de IA (prompt-context.md).
+   */
+  promptContextFile?: string;
+
+  /**
+   * Ruta al árbol de accesibilidad interactivo (accessibility-tree.json).
+   */
+  accessibilityTreeFile?: string;
 }
 
 /**
@@ -314,7 +329,7 @@ export interface ReconReport {
 export interface UserActionRecord {
   id: string;
   timestamp: string;
-  actionType: 'click' | 'input' | 'navigation' | 'url_change';
+  actionType: 'click' | 'input' | 'navigation' | 'url_change' | 'popup_opened' | 'popup_closed';
   url: string;
   target?: {
     tag: string;
@@ -332,6 +347,8 @@ export interface UserActionRecord {
   valuePreview?: string;
   suggestedLocator?: string;
   stabilityScore?: number;
+  triggersPopup?: boolean;
+  popupDetails?: PopupEvent;
   routeSuggestion?: {
     route: string;
     directRoutable: boolean;
@@ -347,6 +364,7 @@ export interface ExecutionSequenceReport {
   generatedAt: string;
   totalActionsCaptured: number;
   uniqueRoutesDiscovered: number;
+  popupsDetected?: PopupEvent[];
   actions: UserActionRecord[];
   routeDirectNavigations: RouteTrackerRecord[];
 }
@@ -480,5 +498,116 @@ export interface SessionRefresherOptions {
    * Callback invocado cuando la sesión se renueva exitosamente.
    */
   onSessionRefreshed?: (newToken: string) => void | Promise<void>;
+}
+
+/**
+ * Opción individual dentro de un elemento <select>.
+ */
+export interface FormFieldOption {
+  value: string;
+  text: string;
+  selected?: boolean;
+}
+
+/**
+ * Esquema descriptivo de un campo interactivo en un formulario web.
+ */
+export interface FormFieldSchema {
+  /**
+   * Etiqueta humana legible (proveniente de <label>, aria-label o placeholder).
+   */
+  label: string;
+
+  /**
+   * Nombre o identificador del formulario al que pertenece ('standalone' si no está en un <form>).
+   */
+  formName: string;
+
+  /**
+   * Tipo de etiqueta HTML ('input', 'select', 'textarea').
+   */
+  tag: 'input' | 'select' | 'textarea';
+
+  /**
+   * Tipo de input ('text', 'number', 'password', 'checkbox', 'radio', 'date', etc.).
+   */
+  type: string;
+
+  /**
+   * Atributo id del elemento si existe.
+   */
+  fieldId?: string;
+
+  /**
+   * Atributo name del elemento si existe.
+   */
+  name?: string;
+
+  /**
+   * Placeholder visible.
+   */
+  placeholder?: string;
+
+  /**
+   * Si el campo es de llenado obligatorio.
+   */
+  required: boolean;
+
+  /**
+   * Si el campo se encuentra deshabilitado.
+   */
+  disabled: boolean;
+
+  /**
+   * Si el campo es de solo lectura.
+   */
+  readOnly: boolean;
+
+  /**
+   * Longitud máxima permitida (si aplica).
+   */
+  maxLength?: number;
+
+  /**
+   * Expresión regular de validación pattern (si aplica).
+   */
+  pattern?: string;
+
+  /**
+   * Catálogo íntegro de opciones (para elementos <select>).
+   */
+  options?: FormFieldOption[];
+
+  /**
+   * Selector sugerido más robusto para Playwright.
+   */
+  suggestedSelector: string;
+
+  /**
+   * Snippet de código Playwright recomendado para interactuar con este campo.
+   */
+  suggestedSnippet: string;
+}
+
+/**
+ * Reporte consolidado del esquema de formularios y diccionario de datos.
+ */
+export interface FormSchemaReport {
+  targetUrl: string;
+  totalForms: number;
+  totalFields: number;
+  forms: Record<string, FormFieldSchema[]>;
+  timestamp: string;
+}
+
+/**
+ * Registro de evento de popup o pestaña emergente detectada.
+ */
+export interface PopupEvent {
+  url: string;
+  title: string;
+  parentUrl: string;
+  timestamp: string;
+  recommendedSnippet: string;
 }
 

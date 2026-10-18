@@ -65,7 +65,23 @@ export class TestServer {
           return;
         }
 
-        // 3. Página principal del portal ERP simulado
+        // 3. Ventana emergente (popup)
+        if (url.pathname === '/popup-report') {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(`
+            <!DOCTYPE html>
+            <html lang="es">
+            <head><meta charset="utf-8"><title>Comprobante de Pago Oficial</title></head>
+            <body style="font-family: sans-serif; padding: 20px;">
+              <h2>Comprobante Oficial de Tesorería</h2>
+              <p id="popup-content">Reporte generado con éxito en ventana emergente.</p>
+            </body>
+            </html>
+          `);
+          return;
+        }
+
+        // 4. Página principal del portal ERP simulado
         if (url.pathname === '/' || url.pathname === '/portal') {
           res.writeHead(200, {
             'Content-Type': 'text/html',
@@ -99,6 +115,38 @@ export class TestServer {
                 <!-- Botón de consulta que dispara API con cabeceras de autorización -->
                 <button id="btn-fetch-invoices">Consultar Facturas del Backend (API XHR)</button>
                 <div id="api-output" style="margin-top: 15px; font-family: monospace; background: #eee; padding: 10px; display: none;"></div>
+              </div>
+
+              <!-- Formulario de prueba para FormAnalyzer -->
+              <div class="card">
+                <h2>Formulario de Consulta de Afiliado</h2>
+                <form id="form-afiliados">
+                  <label for="tipo-doc">Tipo de Documento:</label>
+                  <select id="tipo-doc" name="docType" required style="padding: 6px; margin-bottom: 8px; display: block;">
+                    <option value="">-- Seleccione --</option>
+                    <option value="CC" selected>Cédula de Ciudadanía</option>
+                    <option value="TI">Tarjeta de Identidad</option>
+                    <option value="CE">Cédula de Extranjería</option>
+                    <option value="PAS">Pasaporte</option>
+                  </select>
+
+                  <label for="num-doc">Número de Documento:</label>
+                  <input id="num-doc" name="docNumber" type="text" placeholder="Ej. 10203040" required maxlength="15" style="padding: 6px; margin-bottom: 8px; display: block;" />
+
+                  <label for="fecha-nacimiento">Fecha de Nacimiento:</label>
+                  <input id="fecha-nacimiento" name="birthDate" type="date" style="padding: 6px; margin-bottom: 8px; display: block;" />
+
+                  <label>
+                    <input type="checkbox" id="chk-urgente" name="urgente" />
+                    Solicitud de Trámite Prioritario
+                  </label>
+                </form>
+              </div>
+
+              <!-- Botón de prueba para disparar Popup / Ventana emergente -->
+              <div class="card">
+                <h2>Reportes Externos</h2>
+                <button id="btn-open-popup" onclick="window.open('/popup-report', 'popupReport', 'width=600,height=400')">Abrir Comprobante en Ventana Emergente</button>
               </div>
 
               <!-- Iframe anidado para prueba de búsqueda multi-frame -->

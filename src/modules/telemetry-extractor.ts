@@ -5,6 +5,7 @@ import {
   ApiContractEndpoint,
   ApiContractsReport,
   ExecutionSequenceReport,
+  PopupEvent,
   RouteTrackerRecord,
   SelectorCandidate,
   SelectorMapEntry,
@@ -27,6 +28,8 @@ export class TelemetryExtractor {
   private apiContractsMap: Map<string, ApiContractEndpoint> = new Map();
   private routesMap: Map<string, RouteTrackerRecord> = new Map();
   private requestStartTimes: Map<string, number> = new Map();
+  private popupsDetected: PopupEvent[] = [];
+  private attachedPages = new WeakSet<Page>();
   private static readonly TELEMETRY_PREFIX = '__SK_TELEMETRY__:';
 
   /**
@@ -34,7 +37,23 @@ export class TelemetryExtractor {
    * No expone propiedades globales en `window` (evita Runtime.addBinding) para ser 100% invisible
    * ante sistemas anti-bot como Cloudflare Turnstile, DataDome o Imperva.
    */
-  public async attach(page: Page, _context: BrowserContext): Promise<void> {
+  public async attach(page: Page, _context?: BrowserContext): Promise<void> {
+    if (this.attachedPages.has(page)) return;
+    this.attachedPages.add(page);
+
+    // Escuchar si la página actual dispara un popup
+    page.on('popup', async (popup) => {
+      await this.handlePopupInstance(popup, page, _context);
+    });
+
+    if (_context) {
+      _context.on('page', async (newPage) => {
+        if (newPage !== page) {
+          await this.handlePopupInstance(newPage, page, _context);
+        }
+      });
+    }
+
     // 1. Escuchar eventos de telemetría vía canal pasivo de consola (cero polución en window)
     page.on('console', (msg) => {
       try {
@@ -251,6 +270,64 @@ export class TelemetryExtractor {
     page.on('response', (response: Response) => {
       this.handleResponse(response);
     });
+  }
+
+  /**
+   * Procesa la apertura de una pestaña emergente o ventana popup.
+   */
+  private async handlePopupInstance(popup: Page, parentPage: Page, context?: BrowserContext): Promise<void> {
+    if (this.attachedPages.has(popup)) return;
+    this.attachedPages.add(popup);
+
+    try {
+      await popup.waitForLoadState('domcontentloaded').catch(() => {});
+      const popupUrl = popup.url();
+      const popupTitle = await popup.title().catch(() => '');
+      const parentUrl = parentPage.url();
+      const snippet = `const [popup] = await Promise.all([\n  page.waitForEvent('popup'),\n  /* locator.click() */\n]);\nawait popup.waitForLoadState('domcontentloaded');`;
+
+      const popupEvt: PopupEvent = {
+        url: popupUrl,
+        title: popupTitle,
+        parentUrl,
+        timestamp: new Date().toISOString(),
+        recommendedSnippet: snippet
+      };
+
+      this.popupsDetected.push(popupEvt);
+
+      if (this.actions.length > 0) {
+        const lastAction = this.actions[this.actions.length - 1];
+        if (lastAction.actionType === 'click') {
+          lastAction.triggersPopup = true;
+          lastAction.popupDetails = popupEvt;
+        }
+      }
+
+      this.actions.push({
+        id: `popup_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actionType: 'popup_opened',
+        url: popupUrl,
+        target: {
+          tag: 'window',
+          text: `Ventana emergente / Popup: "${popupTitle || popupUrl}"`
+        },
+        suggestedLocator: snippet,
+        stabilityScore: 100
+      });
+
+      console.log(`\n🪟 [TelemetryExtractor] Pestaña emergente / Popup detectado: "${popupTitle || popupUrl}"`);
+      console.log(`   👉 Sugerencia RPA: Usa page.waitForEvent('popup') antes del clic que lo abre.`);
+
+      if (context) {
+        await this.attach(popup, context);
+      }
+    } catch {}
+  }
+
+  public getPopupsDetected(): PopupEvent[] {
+    return this.popupsDetected;
   }
 
   /**
@@ -669,6 +746,7 @@ export class TelemetryExtractor {
       generatedAt: new Date().toISOString(),
       totalActionsCaptured: this.actions.length,
       uniqueRoutesDiscovered: this.routesMap.size,
+      popupsDetected: this.popupsDetected,
       actions: this.actions,
       routeDirectNavigations: Array.from(this.routesMap.values())
     };
