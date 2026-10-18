@@ -45,6 +45,7 @@ Universal Web Reconnaissance & RPA Blueprint Engine
 ===============================================================
 
 Uso:
+  sk [opciones]
   scanner-kit [opciones]
   scanner-kit scan [opciones]
 
@@ -68,10 +69,10 @@ Información y ayuda:
   -v, --version                  Muestra la versión instalada de scanner-kit
 
 Ejemplos:
-  $ scanner-kit --u=https://portal.nuevaeps.com.co/Portal/home.jspx
-  $ scanner-kit --u=https://portal.nuevaeps.com.co/Portal/home.jspx -c autorizaciones
+  $ sk --u=https://portal.nuevaeps.com.co/Portal/home.jspx
+  $ sk --u=https://portal.nuevaeps.com.co/Portal/home.jspx -c autorizaciones
   $ scanner-kit --u=http://172.16.1.122:5002/ --out=./mi-carpeta
-  $ scanner-kit scan --help
+  $ sk --help
 `);
 }
 

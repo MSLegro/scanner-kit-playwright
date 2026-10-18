@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
+    "sk": "dist/cli.js",
     "scanner-kit": "dist/cli.js",
     "scanner-kit-playwright": "dist/cli.js"
   },
@@ -35,8 +36,7 @@
   "license": "MIT",
   "dependencies": {
     "dotenv": "^18.0.7",
-    "playwright": "^1.49.0",
-    "scanner-kit-playwright": "link:"
+    "playwright": "^1.49.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

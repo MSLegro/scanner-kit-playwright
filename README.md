@@ -60,17 +60,17 @@ git pull && pnpm build
 
 ### Uso del CLI en Cualquier Terminal y Carpeta
 
-Una vez enlazado, puedes abrir cualquier terminal en cualquier proyecto y ejecutar:
+Una vez enlazado, puedes usar el comando rápido **`sk`** (o `scanner-kit`) en cualquier terminal y proyecto:
 
 ```bash
-# Iniciar escaneo visual directo (se abre Chrome con observación pasiva)
-scanner-kit --u=https://portal.nuevaeps.com.co/Portal/home.jspx
+# Iniciar escaneo visual directo con el alias rápido 'sk'
+sk --u=https://portal.nuevaeps.com.co/Portal/home.jspx
 
 # Con subcarpeta o categoría de clasificación para el blueprint
-scanner-kit --u=https://portal.nuevaeps.com.co/Portal/home.jspx -c autorizaciones
+sk --u=https://portal.nuevaeps.com.co/Portal/home.jspx -c autorizaciones
 
 # Ver todas las opciones y ayuda
-scanner-kit --help
+sk --help
 ```
 
 ---
