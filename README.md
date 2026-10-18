@@ -26,38 +26,59 @@ El propósito de **`scanner-kit-playwright`** no es servir de runtime para ejecu
 
 ---
 
-## 🚀 Uso Rápido en Cualquier PC (Comandos Ultracortos)
+## 🚀 Configuración y Uso Rápido (En Casa o en el Trabajo) 🏆
 
-### Opción 1: Instalación Global en la Máquina (Recomendado) 🏆
+### Método Recomendado: Enlace Global en Vivo (`npm link`)
 
-Instala el CLI globalmente **una única vez**:
+La forma más rápida y cómoda de tener el comando `scanner-kit` disponible en cualquier terminal de tu PC (tanto en el trabajo como en tu casa) sin fricción:
 
 ```bash
-pnpm add -g github:MSLegro/scanner-kit-playwright
-# o: npm install -g github:MSLegro/scanner-kit-playwright
+# 1. Compilar el proyecto (genera dist/ y asigna permisos ejecutables automáticamente)
+pnpm build
+
+# 2. Vincular el comando globalmente al sistema (solo una vez por equipo)
+npm link
 ```
 
-A partir de ese momento, en **cualquier terminal y dentro de la carpeta de cualquier proyecto**:
+> 💡 **¿Por qué `npm link`?**  
+> Crea un acceso directo en vivo entre tu código local y tu sistema operativo. Si en el futuro agregas nuevas funciones o corriges un selector y corres `pnpm build`, **tu comando global `scanner-kit` se actualiza al instante sin tener que reinstalar nada**.
+
+#### 🔄 Sincronización entre varios dispositivos (Casa ↔ Trabajo)
+Cuando mejores el escáner en un equipo y quieras usarlo en el otro:
+```bash
+# En el PC donde hiciste los cambios:
+git commit -am "feat: nueva capacidad" && git push
+
+# En tu otro PC:
+git pull && pnpm build
+# ¡Listo! Tu comando scanner-kit ya tiene las últimas mejoras en esa máquina.
+```
+
+---
+
+### Uso del CLI en Cualquier Terminal y Carpeta
+
+Una vez enlazado, puedes abrir cualquier terminal en cualquier proyecto y ejecutar:
 
 ```bash
-# Comando ultracorto (inicia el profiling visual inmediatamente)
+# Iniciar escaneo visual directo (se abre Chrome con observación pasiva)
 scanner-kit --u=https://portal.nuevaeps.com.co/Portal/home.jspx
 
-# Con subcarpeta o categoría de clasificación
+# Con subcarpeta o categoría de clasificación para el blueprint
 scanner-kit --u=https://portal.nuevaeps.com.co/Portal/home.jspx -c autorizaciones
 
-# Ver opciones y ayuda
+# Ver todas las opciones y ayuda
 scanner-kit --help
 ```
 
 ---
 
-### Opción 2: Sin Instalar Nada (Vía `pnpm dlx` / `npx`)
+### Método Alternativo: Instalación desde Release (.tgz)
 
-En cualquier PC con Node.js, ejecuta directamente en la terminal de tu bot:
+Si estás en una máquina donde no quieres clonar el código fuente, descarga el archivo `scanner-kit-playwright-*.tgz` desde la pestaña [Releases](https://github.com/MSLegro/scanner-kit-playwright/releases) de tu repositorio y ejecuta:
 
 ```bash
-pnpm dlx github:MSLegro/scanner-kit-playwright --u=https://portal.nuevaeps.com.co/Portal/home.jspx
+npm install -g ./scanner-kit-playwright-1.1.0.tgz
 ```
 
 ---
