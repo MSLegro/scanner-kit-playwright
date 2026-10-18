@@ -307,18 +307,21 @@ async function runCli() {
         requireVisible: true
       });
       console.log(`  ✓ Elemento localizado. ¿Está en iframe? ${frameResult.isInIframe ? 'SÍ' : 'NO'}`);
+      await frameResult.locator.click();
+      console.log('  ✓ Clic ejecutado con éxito en el iframe anidado.');
 
       console.log('[5/6] Ejecutando clic y espiando respuesta JSON concurrente (clickAndSpyApi)...');
-      interface OrderResponse {
-        orderId: string;
+      interface InvoiceResponse {
         status: string;
-        total: number;
+        company: string;
+        records: Array<{ id: string; amount: number; currency: string; status: string }>;
       }
-      const spyResult = await scanner.clickAndSpyApi<OrderResponse>(frameResult.locator, {
-        urlPattern: '/api/checkout',
-        method: 'POST'
+      const spyResult = await scanner.clickAndSpyApi<InvoiceResponse>('#btn-fetch-invoices', {
+        urlPattern: '/api/v1/invoices',
+        method: 'GET',
+        timeout: 8000
       });
-      console.log(`  ✓ API interceptada exitosamente en ${spyResult.timingMs}ms:`, spyResult.data);
+      console.log(`  ✓ API interceptada exitosamente en ${spyResult.timingMs}ms:`, spyResult.data.records?.[0] || spyResult.data);
     }
 
     // 7. Generar y exportar artefactos
