@@ -86,6 +86,18 @@ export interface ScannerKitOptions {
    * Argumentos adicionales para el ejecutable de Chromium.
    */
   launchArgs?: string[];
+
+  /**
+   * Activar extractor de identidad visual y recursos gráficos (logos, favicons, banners).
+   * Por defecto: true.
+   */
+  brandExtractionMode?: boolean;
+
+  /**
+   * Descargar localmente los recursos gráficos de marca en ./blueprint/<target>/brand-assets/.
+   * Por defecto: true.
+   */
+  downloadBrandAssets?: boolean;
 }
 
 /**
@@ -136,6 +148,16 @@ export interface ExportArtifactsResult {
    * Ruta al árbol de accesibilidad interactivo (accessibility-tree.json).
    */
   accessibilityTreeFile?: string;
+
+  /**
+   * Ruta al reporte de identidad y recursos gráficos (brand-identity.json).
+   */
+  brandIdentityFile?: string;
+
+  /**
+   * Directorio donde se descargaron los recursos gráficos de marca (brand-assets/).
+   */
+  brandAssetsDir?: string;
 }
 
 /**
@@ -610,4 +632,43 @@ export interface PopupEvent {
   timestamp: string;
   recommendedSnippet: string;
 }
+
+/**
+ * Recurso gráfico de identidad visual extraído del sitio web.
+ */
+export interface BrandGraphicResource {
+  id: string;
+  type: 'favicon' | 'apple-touch-icon' | 'shortcut-icon' | 'logo' | 'brand-icon' | 'og-image' | 'twitter-image' | 'banner' | 'graphic';
+  url: string;
+  alt?: string;
+  title?: string;
+  mimeType?: string;
+  dimensions?: {
+    width?: number;
+    height?: number;
+  };
+  suggestedSelector?: string;
+  localPath?: string;
+  isDataUrl?: boolean;
+}
+
+/**
+ * Reporte integral de identidad visual y recursos gráficos del sitio analizado (brand-identity.json).
+ */
+export interface BrandIdentityReport {
+  targetUrl: string;
+  timestamp: string;
+  meta: {
+    pageTitle?: string;
+    siteName?: string;
+    description?: string;
+    themeColor?: string;
+    applicationName?: string;
+  };
+  primaryLogo?: BrandGraphicResource;
+  primaryFavicon?: BrandGraphicResource;
+  resources: BrandGraphicResource[];
+  totalResources: number;
+}
+
 

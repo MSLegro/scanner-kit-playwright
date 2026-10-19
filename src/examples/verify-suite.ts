@@ -91,7 +91,8 @@ async function runVerification() {
       'recon-report.json',
       'form-schema.json',
       'prompt-context.md',
-      'accessibility-tree.json'
+      'accessibility-tree.json',
+      'brand-identity.json'
     ];
 
     for (const f of expectedFiles) {
@@ -131,7 +132,33 @@ async function runVerification() {
     if (!promptContext.includes('Briefing Técnico para Agente de IA') || !promptContext.includes('Diccionario de Campos de Formulario')) {
       throw new Error('[FAIL] prompt-context.md no contiene las secciones esperadas del briefing');
     }
-    console.log(`  ✓ prompt-context.md verificado con éxito (briefing ejecutivo generado para Agentes)`);
+    if (!promptContext.includes('Identidad Visual y Recursos de Marca (Branding)')) {
+      throw new Error('[FAIL] prompt-context.md no incluye la sección de Identidad Visual y Branding');
+    }
+    console.log(`  ✓ prompt-context.md verificado con éxito (briefing ejecutivo con identidad visual generado para Agentes)`);
+
+    // Validar contenido de brand-identity.json
+    const brandData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'brand-identity.json'), 'utf-8'));
+    console.log(`  ✓ brand-identity.json: ${brandData.totalResources} recursos de marca identificados`);
+    if (!brandData.primaryLogo) {
+      throw new Error('[FAIL] BrandExtractor no detectó el logo principal');
+    }
+    console.log(`  ✓ Logo Principal identificado: ${brandData.primaryLogo.url}`);
+    if (!brandData.primaryFavicon) {
+      throw new Error('[FAIL] BrandExtractor no detectó el favicon principal');
+    }
+    console.log(`  ✓ Favicon Principal identificado: ${brandData.primaryFavicon.url}`);
+    if (brandData.meta.themeColor !== '#0066cc') {
+      throw new Error(`[FAIL] Color de tema no coincide: ${brandData.meta.themeColor}`);
+    }
+    console.log(`  ✓ Metadatos de marca extraídos: Título="${brandData.meta.pageTitle}", Tema="${brandData.meta.themeColor}"`);
+
+    // Validar carpeta brand-assets/
+    const brandAssetsDir = path.join(artifacts.outputDirectory, 'brand-assets');
+    if (fs.existsSync(brandAssetsDir)) {
+      const downloadedFiles = fs.readdirSync(brandAssetsDir);
+      console.log(`  ✓ brand-assets/ contiene ${downloadedFiles.length} archivos descargados:`, downloadedFiles.join(', '));
+    }
 
     // Validar contenido de selectors-map.json
     const selData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'selectors-map.json'), 'utf-8'));

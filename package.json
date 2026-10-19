@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "postbuild": "chmod +x dist/cli.js 2>/dev/null || true",
+    "postbuild": "node -e \"try { require('fs').chmodSync('dist/cli.js', 0o755); } catch (e) {}\"",
     "typecheck": "tsc --noEmit",
     "prepare": "pnpm build",
     "scan": "ts-node src/cli.ts",

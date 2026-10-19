@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   ApiContractsReport,
+  BrandIdentityReport,
   ExecutionSequenceReport,
   FormSchemaReport,
   ReconReport,
@@ -19,6 +20,7 @@ export interface AgentBriefingInput {
   apiContracts?: ApiContractsReport | null;
   formSchema?: FormSchemaReport | null;
   accessibilityTree?: unknown | null;
+  brandIdentity?: BrandIdentityReport | null;
 }
 
 /**
@@ -53,8 +55,54 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 1. ESTRATEGIA ANTI-BOT Y EJECUCIÓN
-    lines.push(`## 🛡️ 1. Diagnóstico Anti-Bot y Recomendaciones de Ejecución`);
+    // 1. IDENTIDAD VISUAL Y RECURSOS DE MARCA (BRANDING)
+    if (data.brandIdentity) {
+      lines.push(`## 🎨 1. Identidad Visual y Recursos de Marca (Branding)`);
+      lines.push(`> Recursos gráficos extraídos para ilustrar la documentación y reconocer la identidad corporativa de la página analizada:`);
+      lines.push(``);
+
+      const meta = data.brandIdentity.meta;
+      if (meta.pageTitle) lines.push(`- **Título de la Página:** ${meta.pageTitle}`);
+      if (meta.siteName) lines.push(`- **Nombre del Sitio / App:** ${meta.siteName}`);
+      if (meta.description) lines.push(`- **Descripción:** *${meta.description}*`);
+      if (meta.themeColor) lines.push(`- **Color de Tema:** \`${meta.themeColor}\``);
+
+      lines.push(``);
+      lines.push(`### 🖼️ Recursos Gráficos Destacados (URLs Listas para Documentación)`);
+
+      if (data.brandIdentity.primaryFavicon) {
+        const fav = data.brandIdentity.primaryFavicon;
+        lines.push(`- **Favicon Principal:** [${fav.url}](${fav.url})${fav.localPath ? ` (Local: \`${fav.localPath}\`)` : ''}`);
+      }
+
+      if (data.brandIdentity.primaryLogo) {
+        const logo = data.brandIdentity.primaryLogo;
+        const imgMarkdown = logo.url.startsWith('http') ? `![Logo](${logo.url}) ` : '';
+        lines.push(`- **Logo Principal:** ${imgMarkdown}\`${logo.url}\`${logo.alt ? ` (Alt: *"${logo.alt}"*)` : ''}${logo.localPath ? ` - Descargado en \`${logo.localPath}\`` : ''}`);
+        if (logo.suggestedSelector) {
+          lines.push(`  - *Selector Playwright:* \`${logo.suggestedSelector}\``);
+        }
+      }
+
+      const extraResources = data.brandIdentity.resources.filter(
+        (r) => r !== data.brandIdentity?.primaryLogo && r !== data.brandIdentity?.primaryFavicon
+      );
+
+      if (extraResources.length > 0) {
+        lines.push(``);
+        lines.push(`**Otros Recursos de Identidad Descubiertos (${extraResources.length}):**`);
+        for (const res of extraResources.slice(0, 8)) {
+          lines.push(`- [${res.type}] \`${res.url}\`${res.alt ? ` (Alt: *"${res.alt}"*)` : ''}${res.localPath ? ` (Local: \`${res.localPath}\`)` : ''}`);
+        }
+      }
+
+      lines.push(``);
+      lines.push(`---`);
+      lines.push(``);
+    }
+
+    // 2. ESTRATEGIA ANTI-BOT Y EJECUCIÓN
+    lines.push(`## 🛡️ 2. Diagnóstico Anti-Bot y Recomendaciones de Ejecución`);
     if (data.reconReport?.optimizationBlueprint) {
       const bp = data.reconReport.optimizationBlueprint;
       if (bp.antiBotWafDetected.length > 0) {
@@ -87,8 +135,8 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 2. SESIÓN Y BYPASS DE LOGIN
-    lines.push(`## 🔑 2. Estado de Sesión y Autenticación (Bypass de Login)`);
+    // 3. SESIÓN Y BYPASS DE LOGIN
+    lines.push(`## 🔑 3. Estado de Sesión y Autenticación (Bypass de Login)`);
     if (data.sessionBackup) {
       const cookieCount = data.sessionBackup.cookies?.length || 0;
       const localKeys = Object.keys(data.sessionBackup.localStorage || {}).length;
@@ -118,8 +166,8 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 3. ATAJOS DE NAVEGACIÓN DIRECTA (ROUTE TRACKER)
-    lines.push(`## 🚀 3. Atajos de Navegación Directa (Evitar navegación por menús)`);
+    // 4. ATAJOS DE NAVEGACIÓN DIRECTA (ROUTE TRACKER)
+    lines.push(`## 🚀 4. Atajos de Navegación Directa (Evitar navegación por menús)`);
     if (data.executionSequence?.routeDirectNavigations && data.executionSequence.routeDirectNavigations.length > 0) {
       lines.push(`El RouteTracker descubrió que las siguientes vistas SPA se pueden abrir directamente con \`page.goto()\`:`);
       lines.push(``);
@@ -135,8 +183,8 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 4. DICCIONARIO DE CAMPOS DE FORMULARIO (FORM SCHEMA)
-    lines.push(`## 📋 4. Diccionario de Campos de Formulario y Reglas de Negocio`);
+    // 5. DICCIONARIO DE CAMPOS DE FORMULARIO (FORM SCHEMA)
+    lines.push(`## 📋 5. Diccionario de Campos de Formulario y Reglas de Negocio`);
     lines.push(`> Utiliza esta tabla para relacionar tus **reglas de negocio** con los campos reales del formulario.`);
     if (data.formSchema && data.formSchema.totalFields > 0) {
       lines.push(`Se catalogaron un total de **${data.formSchema.totalFields} campos interactivos** en **${data.formSchema.totalForms} formulario(s)**:`);
@@ -173,8 +221,8 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 5. ATAJO POR API REST DIRECTA (BYPASS DE UI)
-    lines.push(`## 🌐 5. Atajo por API REST Directa (Bypass de Interfaz Gráfica)`);
+    // 6. ATAJO POR API REST DIRECTA (BYPASS DE UI)
+    lines.push(`## 🌐 6. Atajo por API REST Directa (Bypass de Interfaz Gráfica)`);
     if (data.apiContracts && data.apiContracts.totalContractsDiscovered > 0) {
       lines.push(`Se descubrieron **${data.apiContracts.totalContractsDiscovered} endpoints REST** que alimentan los datos del portal.`);
       lines.push(`Si tu regla de negocio solo requiere consultar o descargar datos, **puedes llamar directamente a estos endpoints sin tocar la UI**:`);
@@ -202,8 +250,8 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 6. VENTANAS EMERGENTES / POPUPS
-    lines.push(`## 🪟 6. Detección de Ventanas Emergentes (Popups)`);
+    // 7. VENTANAS EMERGENTES / POPUPS
+    lines.push(`## 🪟 7. Detección de Ventanas Emergentes (Popups)`);
     const popups = data.executionSequence?.popupsDetected || [];
     if (popups.length > 0) {
       lines.push(`> ⚠️ **Atención Agente:** Se detectaron **${popups.length} ventanas emergentes** abiertas durante la sesión.`);
@@ -228,8 +276,8 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 7. MATRIZ DE SELECTORES CERTIFICADOS
-    lines.push(`## 🎯 7. Matriz de Selectores Certificados (Nivel EXCELLENT y HIGH)`);
+    // 8. MATRIZ DE SELECTORES CERTIFICADOS
+    lines.push(`## 🎯 8. Matriz de Selectores Certificados (Nivel EXCELLENT y HIGH)`);
     if (data.selectorsMap && data.selectorsMap.totalSelectorsAnalyzed > 0) {
       lines.push(`A continuación los selectores con mayor estabilidad evaluados en la página:`);
       lines.push(``);

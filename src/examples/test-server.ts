@@ -81,6 +81,20 @@ export class TestServer {
           return;
         }
 
+        // 3.1. Recursos gráficos de identidad de marca (Logo y Favicon)
+        if (url.pathname === '/favicon.ico') {
+          res.writeHead(200, { 'Content-Type': 'image/x-icon' });
+          res.end(Buffer.from('AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAQAAAAAAAAAAAAAAA', 'base64'));
+          return;
+        }
+        if (url.pathname === '/assets/erp-logo.svg') {
+          res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+          res.end(
+            `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 40"><rect width="160" height="40" rx="6" fill="#0066cc"/><text x="80" y="26" font-size="18" font-family="sans-serif" font-weight="bold" text-anchor="middle" fill="#fff">ERP CORP</text></svg>`
+          );
+          return;
+        }
+
         // 4. Página principal del portal ERP simulado
         if (url.pathname === '/' || url.pathname === '/portal') {
           res.writeHead(200, {
@@ -93,6 +107,12 @@ export class TestServer {
             <head>
               <meta charset="utf-8">
               <title>Portal ERP Corporativo - Simulación</title>
+              <link rel="icon" type="image/x-icon" href="/favicon.ico">
+              <meta name="theme-color" content="#0066cc">
+              <meta name="application-name" content="ERP Corporativo">
+              <meta property="og:site_name" content="Portal ERP Corporativo">
+              <meta property="og:description" content="Sistema empresarial de gestión de tesorería y facturas.">
+              <meta property="og:image" content="/assets/erp-logo.svg">
               <style>
                 body { font-family: system-ui, sans-serif; margin: 30px; background-color: #f7f9fc; }
                 .card { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
@@ -102,6 +122,10 @@ export class TestServer {
               </style>
             </head>
             <body>
+              <header style="margin-bottom: 20px;">
+                <img src="/assets/erp-logo.svg" alt="ERP Logo Corporativo" class="brand-logo" width="160" height="40" />
+              </header>
+
               <div class="card">
                 <h1>Sistema ERP Corporativo - Módulo de Tesorería</h1>
                 <p>Simulación para pruebas de ingeniería inversa y automatización con ScannerKit.</p>

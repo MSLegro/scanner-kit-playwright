@@ -10,8 +10,10 @@ import { TelemetryExtractor } from './modules/telemetry-extractor';
 import { TurboManager, TurboOptions } from './modules/turbo-manager';
 import { FormAnalyzer } from './modules/form-analyzer';
 import { AgentBriefing } from './modules/agent-briefing';
+import { BrandExtractor } from './modules/brand-extractor';
 import {
   ApiContractsReport,
+  BrandIdentityReport,
   ClickAndSpyOptions,
   ExecutionSequenceReport,
   ExportArtifactsResult,
@@ -40,6 +42,7 @@ export class ScannerKit {
   private _reconEngine?: ReconEngine;
   private _telemetryExtractor?: TelemetryExtractor;
   private _formAnalyzer: FormAnalyzer;
+  private _brandExtractor: BrandExtractor;
   private _options: ScannerKitOptions;
 
   private constructor(
@@ -61,6 +64,7 @@ export class ScannerKit {
     this._reconEngine = reconEngine;
     this._telemetryExtractor = telemetryExtractor;
     this._formAnalyzer = new FormAnalyzer();
+    this._brandExtractor = new BrandExtractor();
   }
 
   /**
@@ -207,6 +211,10 @@ export class ScannerKit {
     return this._formAnalyzer;
   }
 
+  public get brandExtractor(): BrandExtractor {
+    return this._brandExtractor;
+  }
+
   // --- Funcionalidades Nativas ---
 
   /**
@@ -302,6 +310,25 @@ export class ScannerKit {
   }
 
   /**
+   * Extrae la identidad de marca y recursos gráficos (logos, favicons, banners, metadatos)
+   * de la página web actual y opcionalmente guarda el reporte en disco.
+   *
+   * @param outputPath Ruta de salida opcional para brand-identity.json.
+   */
+  public async extractBrandIdentity(outputPath?: string): Promise<BrandIdentityReport | null> {
+    if (this._page.isClosed()) return null;
+    const outputDir = outputPath ? path.dirname(path.resolve(outputPath)) : undefined;
+    const report = await this._brandExtractor.analyzePageBrand(this._page, {
+      downloadAssets: this._options.downloadBrandAssets !== false,
+      outputDir
+    });
+    if (outputPath) {
+      this._brandExtractor.saveBrandReport(outputPath, report);
+    }
+    return report;
+  }
+
+  /**
    * Resuelve la ruta del directorio de salida agrupada por target (dominio / host / IP)
    * y categoría opcional, asegurando nombres válidos y compatibles con el sistema de archivos (Windows / Linux).
    *
@@ -394,6 +421,7 @@ export class ScannerKit {
     let contractsReport: ApiContractsReport | null = null;
     let formReport: FormSchemaReport | null = null;
     let accessibilityData: unknown = null;
+    let brandReport: BrandIdentityReport | null = null;
 
     // 1. Respaldo de Sesión
     try {
@@ -499,7 +527,27 @@ export class ScannerKit {
       }
     }
 
-    // 6. Briefing Consolidado para Agente de IA (prompt-context.md)
+    // 6. Identidad Visual y Recursos de Marca (BrandExtractor)
+    if (this._options.brandExtractionMode !== false && !this._page.isClosed()) {
+      try {
+        const brandIdentityPath = path.join(targetDir, 'brand-identity.json');
+        brandReport = await this._brandExtractor.analyzePageBrand(this._page, {
+          downloadAssets: this._options.downloadBrandAssets !== false,
+          outputDir: targetDir
+        });
+        if (brandReport) {
+          this._brandExtractor.saveBrandReport(brandIdentityPath, brandReport);
+          results.brandIdentityFile = brandIdentityPath;
+          if (this._options.downloadBrandAssets !== false) {
+            results.brandAssetsDir = path.join(targetDir, 'brand-assets');
+          }
+        }
+      } catch (e) {
+        console.warn('[ScannerKit] No se pudo exportar identidad de marca y recursos gráficos:', (e as Error).message);
+      }
+    }
+
+    // 7. Briefing Consolidado para Agente de IA (prompt-context.md)
     try {
       const promptContextPath = path.join(targetDir, 'prompt-context.md');
       AgentBriefing.savePromptContext(promptContextPath, {
@@ -511,7 +559,8 @@ export class ScannerKit {
         selectorsMap: selectorsReport,
         apiContracts: contractsReport,
         formSchema: formReport,
-        accessibilityTree: accessibilityData
+        accessibilityTree: accessibilityData,
+        brandIdentity: brandReport
       });
       results.promptContextFile = promptContextPath;
     } catch (e) {

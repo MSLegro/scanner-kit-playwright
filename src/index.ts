@@ -12,6 +12,7 @@ export { TelemetryExtractor } from './modules/telemetry-extractor';
 export { SessionRefresher } from './modules/session-refresher';
 export { FormAnalyzer } from './modules/form-analyzer';
 export { AgentBriefing, AgentBriefingInput } from './modules/agent-briefing';
+export { BrandExtractor, BrandExtractorOptions } from './modules/brand-extractor';
 
 // Re-export de tipos e interfaces TypeScript
 export * from './types';

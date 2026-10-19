@@ -376,6 +376,12 @@ async function runCli() {
     if (exported.formSchemaFile) {
       console.log(`📋 Esquema de Formularios: ${exported.formSchemaFile}`);
     }
+    if (exported.brandIdentityFile) {
+      console.log(`🎨 Identidad y Recursos Gráficos: ${exported.brandIdentityFile}`);
+    }
+    if (exported.brandAssetsDir && fs.existsSync(exported.brandAssetsDir)) {
+      console.log(`🖼️  Recursos de Marca Descargados: ${exported.brandAssetsDir}`);
+    }
     console.log('===============================================================\n');
 
     await scanner.close({ exportArtifacts: false });

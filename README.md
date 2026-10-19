@@ -102,9 +102,9 @@ pnpm blueprint --u=https://portal.nuevaeps.com.co/Portal/home.jspx
 
 ---
 
-## 📁 El Resultado: Carpeta `blueprint/` (8 Artefactos)
+## 📁 El Resultado: Carpeta `blueprint/` (9 Artefactos + Assets)
 
-Al terminar tu exploración y cerrar la ventana con la **`[X]`** o presionar **`[ENTER]`**, se genera automáticamente la carpeta `./blueprint/<target>/[categoria]/` con **8 archivos de ingeniería inversa**:
+Al terminar tu exploración y cerrar la ventana con la **`[X]`** o presionar **`[ENTER]`**, se genera automáticamente la carpeta `./blueprint/<target>/[categoria]/` con **9 archivos de ingeniería inversa y recursos de identidad**:
 
 ```text
 mi-nuevo-bot/
@@ -112,13 +112,15 @@ mi-nuevo-bot/
 └── blueprint/
     └── portal.nuevaeps.com.co/
         ├── prompt-context.md          # 🤖 Briefing ejecutivo en Markdown para Agentes de IA
+        ├── brand-identity.json        # 🎨 Identidad corporativa, logos, favicons, colores y metadatos
         ├── form-schema.json           # 📋 Esquema de formularios y diccionario de opciones <select>
         ├── accessibility-tree.json    # ♿ Árbol de accesibilidad y roles ARIA nativos
         ├── execution-sequence.json    # ⏱️ Acciones cronológicas, popups y atajos directos page.goto()
         ├── selectors-map.json         # 🎯 Matriz de estabilidad de locators (EXCELLENT a FRAGILE)
         ├── api-contracts.json         # 🌐 Contratos XHR/Fetch con payloads y esquemas JSON tipados
         ├── recon-report.json          # 🛡️ Diagnóstico de WAFs, potencial de ahorro Turbo y red
-        └── session-backup.json        # 🔑 Respaldo de cookies HttpOnly, localStorage y sessionStorage
+        ├── session-backup.json        # 🔑 Respaldo de cookies HttpOnly, localStorage y sessionStorage
+        └── brand-assets/              # 🖼️ Recursos gráficos descargados (favicon, logos SVG/PNG, banners)
 ```
 
 ---
@@ -128,11 +130,12 @@ mi-nuevo-bot/
 El archivo **`prompt-context.md`** está redactado y formateado como una orden de trabajo lista para que se la pegues directamente a tu Agente de IA (Cursor, Claude, Antigravity, ChatGPT, Copilot). 
 
 El archivo ya le explica al agente:
-1. Las precauciones anti-bot a tomar.
-2. Cómo saltarse menús lentos usando las rutas descubiertas (`page.goto`).
-3. El diccionario exacto de opciones para selects y campos de formulario.
-4. Cómo hacer bypass de la interfaz usando llamadas REST directas (`page.request.post()`).
-5. Los selectores Playwright con fiabilidad `HIGH` y `EXCELLENT`.
+1. La identidad visual del portal (título, marca, logos y URLs de recursos gráficos listos para documentar).
+2. Las precauciones anti-bot a tomar.
+3. Cómo saltarse menús lentos usando las rutas descubiertas (`page.goto`).
+4. El diccionario exacto de opciones para selects y campos de formulario.
+5. Cómo hacer bypass de la interfaz usando llamadas REST directas (`page.request.post()`).
+6. Los selectores Playwright con fiabilidad `HIGH` y `EXCELLENT`.
 
 En tu proyecto final, solo instalas Playwright nativo:
 
