@@ -30,20 +30,29 @@ El propósito de **`scanner-kit-playwright`** no es servir de runtime para ejecu
 
 ## 🚀 Configuración y Uso Rápido (En Casa o en el Trabajo) 🏆
 
-### Método Recomendado: Enlace Global en Vivo (`npm link`)
+### ⚡ Un solo comando tras clonar (Recomendado)
 
-La forma más rápida y cómoda de tener el comando `scanner-kit` disponible en cualquier terminal de tu PC (tanto en el trabajo como en tu casa) sin fricción:
+Al clonar el repositorio, solo corre **un único comando**:
 
 ```bash
-# 1. Compilar el proyecto (genera dist/ y asigna permisos ejecutables automáticamente)
-pnpm build
+# Opción 1: Multiplataforma (Node / pnpm / npm)
+pnpm run setup
 
-# 2. Vincular el comando globalmente al sistema (solo una vez por equipo)
-npm link
+# Opción 2: En Windows (PowerShell directo)
+.\setup.ps1
+
+# Opción 3: En Linux / macOS
+./setup.sh
 ```
 
-> 💡 **¿Por qué `npm link`?**  
-> Crea un acceso directo en vivo entre tu código local y tu sistema operativo. Si en el futuro agregas nuevas funciones o mejoras un módulo y corres `pnpm build`, **tu comando global `scanner-kit` se actualiza al instante sin tener que reinstalar nada**.
+Este comando realiza automáticamente en un solo paso:
+1. Instala todas las dependencias (`pnpm install` / `npm install`).
+2. Descarga el navegador Chromium optimizado para Playwright.
+3. Compila el código TypeScript a JavaScript (`dist/`) asignando permisos ejecutables.
+4. Enlaza los comandos globales (`sk`, `scanner-kit`, `scanner-kit-playwright`) a tu sistema operativo.
+
+> 💡 **Enlace en Vivo (Symlink):**  
+> Al usar symlinks globales, si en el futuro mejoras un módulo o agregas nuevas funciones, solo ejecutas `pnpm build` y tu comando global `sk` se actualiza al instante sin reinstalar.
 
 #### 🔄 Sincronización entre varios dispositivos (Casa ↔ Trabajo)
 Cuando mejores el escáner en un equipo y quieras usarlo en el otro:
@@ -53,7 +62,7 @@ git commit -am "feat: nueva capacidad" && git push
 
 # En tu otro PC:
 git pull && pnpm build
-# ¡Listo! Tu comando scanner-kit ya tiene las últimas mejoras en esa máquina.
+# ¡Listo! Tu comando sk ya tiene las últimas mejoras en esa máquina.
 ```
 
 ---
