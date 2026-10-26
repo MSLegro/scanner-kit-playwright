@@ -87,7 +87,6 @@ function runStep(title, command, options = {}) {
 function ensureWindowsPathPersistence() {
   if (!isWin) return;
   try {
-    // Asegurar que PNPM_HOME y %PNPM_HOME%\bin queden persistidos en el registro de Windows
     const psScript = `
       $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
       $target = '${pnpmBinDir.replace(/'/g, "''")}'
@@ -97,6 +96,33 @@ function ensureWindowsPathPersistence() {
       }
     `;
     execSync(`powershell -NoProfile -NonInteractive -Command "${psScript.replace(/\n/g, ' ')}"`, { stdio: 'ignore' });
+  } catch {}
+}
+
+function installWindowsDirectShims() {
+  if (!isWin) return;
+  try {
+    const cliJs = path.join(ROOT_DIR, 'dist', 'cli.js');
+    const cmdContent = `@ECHO off\r\nnode "${cliJs}" %*\r\n`;
+    const ps1Content = `& node "${cliJs}" @args\r\n`;
+
+    const defaultCliTools = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'cli-tools');
+    const pathDirs = (process.env.PATH || '').split(path.delimiter);
+    const targetDirs = [defaultCliTools, ...pathDirs];
+
+    for (const dir of targetDirs) {
+      if (!dir || !fs.existsSync(dir)) continue;
+      const lower = dir.toLowerCase();
+      if (lower.includes('cli-tools') || (lower.includes('programs') && lower.includes('bin'))) {
+        try {
+          fs.writeFileSync(path.join(dir, 'sk.cmd'), cmdContent);
+          fs.writeFileSync(path.join(dir, 'sk.ps1'), ps1Content);
+          fs.writeFileSync(path.join(dir, 'scanner-kit.cmd'), cmdContent);
+          fs.writeFileSync(path.join(dir, 'scanner-kit.ps1'), ps1Content);
+          break;
+        } catch {}
+      }
+    }
   } catch {}
 }
 
@@ -139,7 +165,10 @@ async function main() {
     ensureWindowsPathPersistence();
   }
 
-  // 6. Verificación de comando global 'sk'
+  // 6. Asegurar shims directos en Windows (evita bloqueos de reinicio de terminal)
+  installWindowsDirectShims();
+
+  // 7. Verificación de comando global 'sk'
   const isGlobalReady = checkCommand('sk');
 
   console.log(`\n${c.green}${c.bold}===============================================================${c.reset}`);
