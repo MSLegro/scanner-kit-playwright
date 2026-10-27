@@ -106,14 +106,15 @@ export class AgentBriefing {
     const lines: string[] = [];
 
     lines.push(`# 🤖 Briefing Técnico para Agente de IA: Automatización RPA (Directiva Blueprint-First)`);
-    lines.push(`> **DIRECTIVA CRÍTICA: BLUEPRINT-FIRST & FORENSIC-ONLY**`);
+    lines.push(`> **DIRECTIVA CRÍTICA: BLUEPRINT-FIRST CON VÁLVULA DE ESCAPE QUIRÚRGICA**`);
     lines.push(`> `);
     lines.push(`> 🏛️ **Este directorio (\`${data.outputDirectory}\`) es una Radiografía Forense Offline (Plano Arquitectónico)** generada automáticamente por **scanner-kit-playwright** tras auditar el portal objetivo.`);
     lines.push(`> **NUNCA debe ser una dependencia de runtime de tu bot en producción.**`);
     lines.push(`> `);
-    lines.push(`> 🛑 **PROHIBICIÓN ESTRICTA DE RE-SCRAPING:**`);
-    lines.push(`> **PROHIBIDO abrir un navegador para volver a scrapear o explorar esta página.** Toda la verdad técnica de red, DOM, formularios y secuencia de ejecución ya está capturada con rigor forense en los artefactos \`api-contracts.json\`, \`execution-sequence.json\`, \`selectors-map.json\` y \`form-schema.json\`.`);
-    lines.push(`> Tu misión como Agente es ensamblar un bot modular, desacoplado y resiliente en Playwright / TypeScript a partir de esta radiografía, sin inventar selectores ni asumir flujos inexistentes.`);
+    lines.push(`> 🎯 **JERARQUÍA DE DECISIÓN OBLIGATORIA PARA EL AGENTE:**`);
+    lines.push(`> 1. **Prioridad Absoluta al Blueprint (95% de los casos):** Para todos los flujos cubiertos durante la auditoría, **NO abras navegadores para re-explorar ni adivines selectores**. Toda la verdad de red, DOM, formularios y secuencia ya está capturada con rigor forense en \`api-contracts.json\`, \`execution-sequence.json\`, \`selectors-map.json\` y \`form-schema.json\`.`);
+    lines.push(`> 2. **Detección Explícita de Brechas (Gap Analysis):** Si tus reglas de negocio requieren interactuar con un elemento, modal o endpoint que **NO fue registrado en este blueprint**, **NUNCA alucines ni inventes selectores**. Declara la brecha con precisión técnica al desarrollador.`);
+    lines.push(`> 3. **Válvula de Escape Quirúrgica:** Si dispones de herramientas de navegación asistida (browser tools / MCP) y requieres resolver la brecha puntual, puedes explorar **únicamente ese elemento específico en modo quirúrgico de solo lectura**, o solicitar al usuario una sub-auditoría (\`sk --u <url_especifica>\`) sin descartar los contratos ya descubiertos.`);
     lines.push(``);
     lines.push(`- **Target URL Auditada:** \`${data.targetUrl}\``);
     lines.push(`- **Directorio del Blueprint Forense:** \`${data.outputDirectory}\``);

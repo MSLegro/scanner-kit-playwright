@@ -135,11 +135,11 @@ async function runVerification() {
     if (!promptContext.includes('Identidad Visual y Recursos de Marca (Branding)')) {
       throw new Error('[FAIL] prompt-context.md no incluye la sección de Identidad Visual y Branding');
     }
-    if (!promptContext.includes('BLUEPRINT-FIRST & FORENSIC-ONLY')) {
-      throw new Error('[FAIL] prompt-context.md no incluye la directiva Blueprint-First & Forensic-Only');
+    if (!promptContext.includes('BLUEPRINT-FIRST CON VÁLVULA DE ESCAPE')) {
+      throw new Error('[FAIL] prompt-context.md no incluye la directiva Blueprint-First con Válvula de Escape');
     }
-    if (!promptContext.includes('PROHIBICIÓN ESTRICTA DE RE-SCRAPING')) {
-      throw new Error('[FAIL] prompt-context.md no incluye la prohibición estricta de re-scraping');
+    if (!promptContext.includes('Detección Explícita de Brechas (Gap Analysis)')) {
+      throw new Error('[FAIL] prompt-context.md no incluye el protocolo de Gap Analysis para brechas');
     }
     if (promptContext.includes("fs.readFileSync('./session-backup.json'")) {
       throw new Error('[FAIL] prompt-context.md todavía contiene el snippet riesgoso fs.readFileSync session-backup.json');
