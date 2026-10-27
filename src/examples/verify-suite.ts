@@ -172,6 +172,45 @@ async function runVerification() {
       console.log(`  ✓ brand-assets/ contiene ${downloadedFiles.length} archivos descargados:`, downloadedFiles.join(', '));
     }
 
+    // Validar carpeta dom-snapshots/ y snapshots HTML generados
+    console.log('\n  -> Validando capturas completas del DOM por acción (dom-snapshots/)...');
+    const domSnapshotsDir = path.join(artifacts.outputDirectory, 'dom-snapshots');
+    if (!fs.existsSync(domSnapshotsDir)) {
+      throw new Error('[FAIL] No se generó la subcarpeta dom-snapshots/');
+    }
+    const domFiles = fs.readdirSync(domSnapshotsDir).filter((f) => f.endsWith('.html'));
+    if (domFiles.length === 0) {
+      throw new Error('[FAIL] La carpeta dom-snapshots/ está vacía; no se guardaron snapshots');
+    }
+    console.log(`  ✓ dom-snapshots/ verificado con ${domFiles.length} snapshot(s) HTML:`, domFiles.join(', '));
+
+    // Validar enlace en execution-sequence.json y contenido del snapshot
+    const actionWithSnapshot = seqData.actions.find((a: any) => a.domSnapshotFile && a.actionType === 'click');
+    if (!actionWithSnapshot) {
+      throw new Error('[FAIL] Ninguna acción de tipo click en execution-sequence.json posee domSnapshotFile');
+    }
+    const sampleSnapshotPath = path.join(artifacts.outputDirectory, actionWithSnapshot.domSnapshotFile);
+    if (!fs.existsSync(sampleSnapshotPath)) {
+      throw new Error(`[FAIL] El archivo referenciado en domSnapshotFile no existe en disco: ${sampleSnapshotPath}`);
+    }
+    const sampleHtml = fs.readFileSync(sampleSnapshotPath, 'utf-8');
+    if (!sampleHtml.includes('<!DOCTYPE html>') || !sampleHtml.includes('ScannerKit DOM Snapshot')) {
+      throw new Error('[FAIL] El snapshot HTML no posee estructura HTML válida o cabecera forense');
+    }
+    if (!sampleHtml.includes('data-sk-action-target="true"')) {
+      throw new Error('[FAIL] El snapshot HTML no marcó el elemento accionado con data-sk-action-target="true"');
+    }
+    if (sampleHtml.includes('<script') || sampleHtml.includes('<style')) {
+      throw new Error('[FAIL] El snapshot HTML contiene scripts o estilos que debieron ser filtrados para IA');
+    }
+    console.log(`  ✓ Snapshot forense verificado: ${actionWithSnapshot.domSnapshotFile} (marcador data-sk-action-target="true" y limpieza de scripts/estilos validados)`);
+
+    // Validar sección de snapshots en prompt-context.md
+    if (!promptContext.includes('Secuencia de Acciones y Snapshots Forenses del DOM')) {
+      throw new Error('[FAIL] prompt-context.md no incluye la sección de snapshots forenses del DOM');
+    }
+    console.log(`  ✓ prompt-context.md incluye tabla de snapshots forenses del DOM`);
+
     // Validar contenido de selectors-map.json
     const selData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'selectors-map.json'), 'utf-8'));
     console.log(`  ✓ selectors-map.json: ${selData.totalSelectorsAnalyzed} selectores analizados`);

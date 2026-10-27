@@ -24,6 +24,8 @@ import {
  */
 export class TelemetryExtractor {
   private actions: UserActionRecord[] = [];
+  private domSnapshots: Map<string, string> = new Map();
+  private domSnapshotsEnabled = true;
   private selectorsMap: Map<string, SelectorMapEntry> = new Map();
   private apiContractsMap: Map<string, ApiContractEndpoint> = new Map();
   private routesMap: Map<string, RouteTrackerRecord> = new Map();
@@ -32,12 +34,21 @@ export class TelemetryExtractor {
   private attachedPages = new WeakSet<Page>();
   private static readonly TELEMETRY_PREFIX = '__SK_TELEMETRY__:';
 
+  constructor(options?: { domSnapshotsMode?: boolean }) {
+    if (options?.domSnapshotsMode !== undefined) {
+      this.domSnapshotsEnabled = options.domSnapshotsMode;
+    }
+  }
+
   /**
    * Conecta los escuchadores pasivos y la inyección sigilosa de telemetría a la página/contexto.
    * No expone propiedades globales en `window` (evita Runtime.addBinding) para ser 100% invisible
    * ante sistemas anti-bot como Cloudflare Turnstile, DataDome o Imperva.
    */
-  public async attach(page: Page, _context?: BrowserContext): Promise<void> {
+  public async attach(page: Page, _context?: BrowserContext, options?: { domSnapshotsMode?: boolean }): Promise<void> {
+    if (options?.domSnapshotsMode !== undefined) {
+      this.domSnapshotsEnabled = options.domSnapshotsMode;
+    }
     if (this.attachedPages.has(page)) return;
     this.attachedPages.add(page);
 
@@ -70,188 +81,349 @@ export class TelemetryExtractor {
     });
 
     // 2. Inyectar script sigiloso en el navegador (sin dejar variables globales en window)
-    await page.addInitScript((prefix: string) => {
-      // No ejecutar ni registrar listeners dentro de iframes de verificación Anti-Bot / Captcha
-      const isChallengeFrame = (): boolean => {
-        try {
-          const host = (window.location.hostname || '').toLowerCase();
-          const href = (window.location.href || '').toLowerCase();
-          return (
-            host.includes('cloudflare.com') ||
-            host.includes('challenges.cloudflare.com') ||
-            href.includes('cdn-cgi/challenge-platform') ||
-            host.includes('recaptcha') ||
-            host.includes('hcaptcha') ||
-            host.includes('datadome') ||
-            host.includes('imperva')
-          );
-        } catch {
-          return false;
-        }
-      };
-
-      if (isChallengeFrame()) return;
-
-      function emitTelemetry(payload: Record<string, unknown>): void {
-        if (isChallengeFrame()) return;
-        try {
-          console.debug(prefix + JSON.stringify(payload));
-        } catch {}
-      }
-
-      function sanitizeText(txt: string | null | undefined): string | undefined {
-        if (!txt) return undefined;
-        const clean = txt.replace(/\s+/g, ' ').trim();
-        return clean.length > 80 ? `${clean.slice(0, 80)}...` : clean;
-      }
-
-      function getCssPath(el: Element): string {
-        if (!(el instanceof Element)) return '';
-        const pathArr: string[] = [];
-        let curr: Element | null = el;
-        while (curr && curr.nodeType === Node.ELEMENT_NODE && curr !== document.body) {
-          let selector = curr.nodeName.toLowerCase();
-          if (curr.id && !curr.id.startsWith('dx-') && !curr.id.match(/\d{5,}/)) {
-            selector += `#${curr.id}`;
-            pathArr.unshift(selector);
-            break;
-          } else {
-            let sib = curr;
-            let nth = 1;
-            while ((sib = sib.previousElementSibling as Element)) {
-              if (sib.nodeName.toLowerCase() === selector) nth++;
-            }
-            if (nth !== 1) selector += `:nth-of-type(${nth})`;
+    await page.addInitScript(
+      ({ prefix, snapshotsEnabled }: { prefix: string; snapshotsEnabled: boolean }) => {
+        // No ejecutar ni registrar listeners dentro de iframes de verificación Anti-Bot / Captcha
+        const isChallengeFrame = (): boolean => {
+          try {
+            const host = (window.location.hostname || '').toLowerCase();
+            const href = (window.location.href || '').toLowerCase();
+            return (
+              host.includes('cloudflare.com') ||
+              host.includes('challenges.cloudflare.com') ||
+              href.includes('cdn-cgi/challenge-platform') ||
+              host.includes('recaptcha') ||
+              host.includes('hcaptcha') ||
+              host.includes('datadome') ||
+              host.includes('imperva')
+            );
+          } catch {
+            return false;
           }
-          pathArr.unshift(selector);
-          curr = curr.parentElement;
-        }
-        return pathArr.join(' > ');
-      }
-
-      function getXPath(el: Element): string {
-        if (!(el instanceof Element)) return '';
-        if (el.id && !el.id.startsWith('dx-')) return `//*[@id="${el.id}"]`;
-        const parts: string[] = [];
-        let curr: Element | null = el;
-        while (curr && curr.nodeType === Node.ELEMENT_NODE) {
-          let count = 0;
-          let sibling = curr.previousSibling;
-          while (sibling) {
-            if (sibling.nodeType === Node.DOCUMENT_TYPE_NODE) break;
-            if (sibling.nodeType === Node.ELEMENT_NODE && (sibling as Element).nodeName === curr.nodeName) {
-              count++;
-            }
-            sibling = sibling.previousSibling;
-          }
-          const tagName = curr.nodeName.toLowerCase();
-          const pathIndex = count > 0 ? `[${count + 1}]` : '';
-          parts.unshift(`${tagName}${pathIndex}`);
-          curr = curr.parentElement;
-        }
-        return parts.length ? `/${parts.join('/')}` : '';
-      }
-
-      function extractElementMeta(target: EventTarget | null) {
-        if (!target || !(target instanceof Element)) return null;
-
-        // Si es un icono interno de un botón, preferir el botón padre interactivo
-        let el = target;
-        const clickableParent = el.closest('button, a, .dx-button, [role="button"], [role="menuitem"], input, select');
-        if (clickableParent && clickableParent !== el) {
-          el = clickableParent;
-        }
-
-        const rawClasses = Array.from(el.classList || []).filter((c) => !c.startsWith('dx-state-'));
-        return {
-          tag: el.tagName.toLowerCase(),
-          id: el.id || undefined,
-          name: el.getAttribute('name') || undefined,
-          text: sanitizeText(el.textContent),
-          ariaLabel: el.getAttribute('aria-label') || undefined,
-          role: el.getAttribute('role') || undefined,
-          placeholder: el.getAttribute('placeholder') || undefined,
-          title: el.getAttribute('title') || undefined,
-          dataTestId:
-            el.getAttribute('data-testid') ||
-            el.getAttribute('data-cy') ||
-            el.getAttribute('data-test') ||
-            undefined,
-          classes: rawClasses.slice(0, 8),
-          cssPath: getCssPath(el),
-          xpath: getXPath(el)
         };
-      }
 
-      // Escuchador de clics del usuario
-      document.addEventListener(
-        'click',
-        (event) => {
-          try {
-            if (isChallengeFrame()) return;
-            const meta = extractElementMeta(event.target);
-            if (!meta) return;
-            emitTelemetry({
-              actionType: 'click',
-              url: window.location.href,
-              target: meta,
-              timestamp: new Date().toISOString()
-            });
-          } catch {}
-        },
-        true
-      );
-
-      // Escuchador de entradas en formularios (inputs y textareas)
-      document.addEventListener(
-        'change',
-        (event) => {
-          try {
-            if (isChallengeFrame()) return;
-            const target = event.target;
-            if (
-              !target ||
-              !(
-                target instanceof HTMLInputElement ||
-                target instanceof HTMLTextAreaElement ||
-                target instanceof HTMLSelectElement
-              )
-            ) {
-              return;
-            }
-            const meta = extractElementMeta(target);
-            if (!meta) return;
-
-            let valPreview = (target.value || '').trim();
-            if (target instanceof HTMLInputElement && target.type === 'password') {
-              valPreview = '***REDACTED***';
-            } else if (valPreview.length > 25) {
-              valPreview = `${valPreview.slice(0, 25)}...`;
-            }
-
-            emitTelemetry({
-              actionType: 'input',
-              url: window.location.href,
-              target: meta,
-              valuePreview: valPreview,
-              timestamp: new Date().toISOString()
-            });
-          } catch {}
-        },
-        true
-      );
-
-      // Escuchadores de navegación SPA en el cliente
-      window.addEventListener('hashchange', () => {
         if (isChallengeFrame()) return;
-        emitTelemetry({
-          actionType: 'url_change',
-          url: window.location.href,
-          navType: 'hashchange',
-          timestamp: new Date().toISOString()
+
+        function emitTelemetry(payload: Record<string, unknown>): void {
+          if (isChallengeFrame()) return;
+          try {
+            console.debug(prefix + JSON.stringify(payload));
+          } catch {}
+        }
+
+        function sanitizeText(txt: string | null | undefined): string | undefined {
+          if (!txt) return undefined;
+          const clean = txt.replace(/\s+/g, ' ').trim();
+          return clean.length > 80 ? `${clean.slice(0, 80)}...` : clean;
+        }
+
+        function captureCleanDom(targetNode: Element | null): string | undefined {
+          if (!snapshotsEnabled) return undefined;
+          try {
+            const root = document.documentElement;
+            if (!root) return '';
+
+            function serializeNode(node: Node | null): string {
+              if (!node) return '';
+
+              if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.nodeValue || '';
+                if (!text.trim()) return '';
+                return text
+                  .replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;');
+              }
+
+              if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+              const el = node as Element;
+              const tag = el.tagName.toLowerCase();
+
+              // Excluir scripts, estilos y links de hojas de estilo
+              if (
+                tag === 'script' ||
+                tag === 'style' ||
+                tag === 'noscript' ||
+                (tag === 'link' && (el.getAttribute('rel') || '').toLowerCase() === 'stylesheet')
+              ) {
+                return '';
+              }
+
+              const isTarget = Boolean(
+                targetNode &&
+                (el === targetNode ||
+                  (targetNode instanceof Element && el.contains(targetNode) && targetNode.contains(el)))
+              );
+
+              const attrs: string[] = [];
+              if (isTarget) {
+                attrs.push('data-sk-action-target="true"');
+              }
+
+              for (let i = 0; i < el.attributes.length; i++) {
+                const attr = el.attributes[i];
+                const name = attr.name;
+                let val = attr.value;
+
+                if (name === 'style' && val.length > 150) {
+                  continue;
+                }
+
+                if ((name === 'src' || name === 'href') && val.startsWith('data:image')) {
+                  val = 'data:image/[REDACTED_BASE64]';
+                }
+
+                const isSensitiveInput =
+                  name === 'value' &&
+                  ((el as HTMLInputElement).type === 'password' ||
+                    /(password|passwd|pwd)/i.test(el.getAttribute('name') || el.id || ''));
+                if (isSensitiveInput) {
+                  val = '***REDACTED***';
+                }
+
+                attrs.push(`${name}="${val.replace(/"/g, '&quot;')}"`);
+              }
+
+              // Sincronizar estado en vivo de controles de formulario
+              if (el instanceof HTMLInputElement) {
+                const isPassword =
+                  el.type === 'password' || /(password|passwd|pwd)/i.test(el.name || el.id || '');
+                const currentVal = isPassword ? '***REDACTED***' : el.value || '';
+                if (!el.hasAttribute('value') && currentVal) {
+                  attrs.push(`value="${currentVal.replace(/"/g, '&quot;')}"`);
+                }
+                if (el.checked && !el.hasAttribute('checked')) {
+                  attrs.push('checked="checked"');
+                }
+              } else if (el instanceof HTMLOptionElement) {
+                if (el.selected && !el.hasAttribute('selected')) {
+                  attrs.push('selected="selected"');
+                }
+              }
+
+              const attrString = attrs.length > 0 ? ' ' + attrs.join(' ') : '';
+
+              if (tag === 'svg') {
+                return `<svg${attrString}><path data-sk-svg-collapsed="true"/></svg>`;
+              }
+
+              if (tag === 'iframe' || tag === 'frame') {
+                let iframeInner = '';
+                try {
+                  const htmlIframe = el as HTMLIFrameElement;
+                  if (htmlIframe.contentDocument && htmlIframe.contentDocument.documentElement) {
+                    iframeInner = `<div data-sk-iframe-content="${el.getAttribute('name') || el.id || el.getAttribute('src') || 'inline'}">${serializeNode(htmlIframe.contentDocument.documentElement)}</div>`;
+                  }
+                } catch {
+                  iframeInner = '<!-- iframe cross-origin (acceso restringido por navegador) -->';
+                }
+                return `<iframe${attrString}>${iframeInner}</iframe>`;
+              }
+
+              const voidTags = [
+                'meta',
+                'link',
+                'img',
+                'br',
+                'hr',
+                'input',
+                'area',
+                'base',
+                'col',
+                'embed',
+                'source',
+                'track',
+                'wbr'
+              ];
+              if (voidTags.includes(tag)) {
+                return `<${tag}${attrString} />`;
+              }
+
+              let childrenHtml = '';
+              if (el instanceof HTMLTextAreaElement) {
+                childrenHtml = (el.value || '')
+                  .replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;');
+              } else {
+                for (let j = 0; j < el.childNodes.length; j++) {
+                  childrenHtml += serializeNode(el.childNodes[j]);
+                }
+              }
+
+              return `<${tag}${attrString}>${childrenHtml}</${tag}>`;
+            }
+
+            const html = serializeNode(root);
+            return `<!DOCTYPE html>\n${html}`;
+          } catch (err) {
+            return '<!-- Error al capturar DOM: ' + String(err) + ' -->';
+          }
+        }
+
+        function getCssPath(el: Element): string {
+          if (!(el instanceof Element)) return '';
+          const pathArr: string[] = [];
+          let curr: Element | null = el;
+          while (curr && curr.nodeType === Node.ELEMENT_NODE && curr !== document.body) {
+            let selector = curr.nodeName.toLowerCase();
+            if (curr.id && !curr.id.startsWith('dx-') && !curr.id.match(/\d{5,}/)) {
+              selector += `#${curr.id}`;
+              pathArr.unshift(selector);
+              break;
+            } else {
+              let sib = curr;
+              let nth = 1;
+              while ((sib = sib.previousElementSibling as Element)) {
+                if (sib.nodeName.toLowerCase() === selector) nth++;
+              }
+              if (nth !== 1) selector += `:nth-of-type(${nth})`;
+            }
+            pathArr.unshift(selector);
+            curr = curr.parentElement;
+          }
+          return pathArr.join(' > ');
+        }
+
+        function getXPath(el: Element): string {
+          if (!(el instanceof Element)) return '';
+          if (el.id && !el.id.startsWith('dx-')) return `//*[@id="${el.id}"]`;
+          const parts: string[] = [];
+          let curr: Element | null = el;
+          while (curr && curr.nodeType === Node.ELEMENT_NODE) {
+            let count = 0;
+            let sibling = curr.previousSibling;
+            while (sibling) {
+              if (sibling.nodeType === Node.DOCUMENT_TYPE_NODE) break;
+              if (sibling.nodeType === Node.ELEMENT_NODE && (sibling as Element).nodeName === curr.nodeName) {
+                count++;
+              }
+              sibling = sibling.previousSibling;
+            }
+            const tagName = curr.nodeName.toLowerCase();
+            const pathIndex = count > 0 ? `[${count + 1}]` : '';
+            parts.unshift(`${tagName}${pathIndex}`);
+            curr = curr.parentElement;
+          }
+          return parts.length ? `/${parts.join('/')}` : '';
+        }
+
+        function extractElementMeta(target: EventTarget | null) {
+          if (!target || !(target instanceof Element)) return null;
+
+          // Si es un icono interno de un botón, preferir el botón padre interactivo
+          let el = target;
+          const clickableParent = el.closest(
+            'button, a, .dx-button, [role="button"], [role="menuitem"], input, select'
+          );
+          if (clickableParent && clickableParent !== el) {
+            el = clickableParent;
+          }
+
+          const rawClasses = Array.from(el.classList || []).filter((c) => !c.startsWith('dx-state-'));
+          return {
+            tag: el.tagName.toLowerCase(),
+            id: el.id || undefined,
+            name: el.getAttribute('name') || undefined,
+            text: sanitizeText(el.textContent),
+            ariaLabel: el.getAttribute('aria-label') || undefined,
+            role: el.getAttribute('role') || undefined,
+            placeholder: el.getAttribute('placeholder') || undefined,
+            title: el.getAttribute('title') || undefined,
+            dataTestId:
+              el.getAttribute('data-testid') ||
+              el.getAttribute('data-cy') ||
+              el.getAttribute('data-test') ||
+              undefined,
+            classes: rawClasses.slice(0, 8),
+            cssPath: getCssPath(el),
+            xpath: getXPath(el)
+          };
+        }
+
+        // Escuchador de clics del usuario
+        document.addEventListener(
+          'click',
+          (event) => {
+            try {
+              if (isChallengeFrame()) return;
+              const meta = extractElementMeta(event.target);
+              if (!meta) return;
+              const targetEl =
+                event.target instanceof Element
+                  ? event.target.closest('button, a, .dx-button, [role="button"], [role="menuitem"], input, select') ||
+                    event.target
+                  : null;
+              const domSnapshot = captureCleanDom(targetEl);
+              emitTelemetry({
+                actionType: 'click',
+                url: window.location.href,
+                target: meta,
+                timestamp: new Date().toISOString(),
+                domSnapshot
+              });
+            } catch {}
+          },
+          true
+        );
+
+        // Escuchador de entradas en formularios (inputs y textareas)
+        document.addEventListener(
+          'change',
+          (event) => {
+            try {
+              if (isChallengeFrame()) return;
+              const target = event.target;
+              if (
+                !target ||
+                !(
+                  target instanceof HTMLInputElement ||
+                  target instanceof HTMLTextAreaElement ||
+                  target instanceof HTMLSelectElement
+                )
+              ) {
+                return;
+              }
+              const meta = extractElementMeta(target);
+              if (!meta) return;
+
+              let valPreview = (target.value || '').trim();
+              if (target instanceof HTMLInputElement && target.type === 'password') {
+                valPreview = '***REDACTED***';
+              } else if (valPreview.length > 25) {
+                valPreview = `${valPreview.slice(0, 25)}...`;
+              }
+
+              const domSnapshot = captureCleanDom(target);
+              emitTelemetry({
+                actionType: 'input',
+                url: window.location.href,
+                target: meta,
+                valuePreview: valPreview,
+                timestamp: new Date().toISOString(),
+                domSnapshot
+              });
+            } catch {}
+          },
+          true
+        );
+
+        // Escuchadores de navegación SPA en el cliente
+        window.addEventListener('hashchange', () => {
+          if (isChallengeFrame()) return;
+          const domSnapshot = captureCleanDom(null);
+          emitTelemetry({
+            actionType: 'url_change',
+            url: window.location.href,
+            navType: 'hashchange',
+            timestamp: new Date().toISOString(),
+            domSnapshot
+          });
         });
-      });
-    }, TelemetryExtractor.TELEMETRY_PREFIX);
+      },
+      { prefix: TelemetryExtractor.TELEMETRY_PREFIX, snapshotsEnabled: this.domSnapshotsEnabled }
+    );
 
     // 3. Escuchar navegación del marco principal (Route Tracker por frame)
     page.on('framenavigated', (frame) => {
@@ -304,8 +476,35 @@ export class TelemetryExtractor {
         }
       }
 
+      let popupDomSnapshot: string | undefined;
+      if (this.domSnapshotsEnabled) {
+        popupDomSnapshot = await popup
+          .evaluate(() => {
+            try {
+              const root = document.documentElement;
+              if (!root) return '';
+              const clone = root.cloneNode(true) as HTMLElement;
+              clone
+                .querySelectorAll('script, style, noscript, link[rel="stylesheet"]')
+                .forEach((s) => s.remove());
+              clone.querySelectorAll('svg').forEach((s) => {
+                s.innerHTML = '<path data-sk-svg-collapsed="true"/>';
+              });
+              return '<!DOCTYPE html>\n' + clone.outerHTML;
+            } catch {
+              return '';
+            }
+          })
+          .catch(() => undefined);
+      }
+
+      const popupActionId = `popup_${Date.now()}`;
+      if (popupDomSnapshot && this.domSnapshotsEnabled) {
+        this.domSnapshots.set(popupActionId, popupDomSnapshot);
+      }
+
       this.actions.push({
-        id: `popup_${Date.now()}`,
+        id: popupActionId,
         timestamp: new Date().toISOString(),
         actionType: 'popup_opened',
         url: popupUrl,
@@ -363,8 +562,13 @@ export class TelemetryExtractor {
         }
       }
 
+      const actionId = `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      if (data.domSnapshot && this.domSnapshotsEnabled) {
+        this.domSnapshots.set(actionId, data.domSnapshot);
+      }
+
       const actionRecord: UserActionRecord = {
-        id: `act_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: actionId,
         timestamp: data.timestamp || new Date().toISOString(),
         actionType,
         url,
@@ -740,11 +944,67 @@ export class TelemetryExtractor {
 
   /**
    * Genera el reporte de secuencia de ejecución cronológica (execution-sequence.json).
+   * Si domSnapshotsMode está habilitado, exporta cada snapshot completo del DOM en dom-snapshots/
+   * y vincula las rutas relativas en cada acción.
    */
   public generateExecutionSequence(outputPath?: string): ExecutionSequenceReport {
+    let totalSnapshotsSaved = 0;
+
+    if (outputPath && this.domSnapshotsEnabled) {
+      const targetDir = path.dirname(path.resolve(outputPath));
+      const snapshotsDir = path.join(targetDir, 'dom-snapshots');
+
+      this.actions.forEach((action, idx) => {
+        const snapshot = this.domSnapshots.get(action.id);
+        if (snapshot) {
+          if (!fs.existsSync(snapshotsDir)) {
+            fs.mkdirSync(snapshotsDir, { recursive: true });
+          }
+
+          const stepNum = String(idx + 1).padStart(3, '0');
+          const rawSlug = (
+            action.target?.id ||
+            action.target?.name ||
+            action.target?.text ||
+            action.target?.tag ||
+            'action'
+          )
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]/g, '_')
+            .slice(0, 25)
+            .replace(/^_+|_+$/g, '') || 'action';
+
+          const fileName = `step-${stepNum}-${action.actionType}-${rawSlug}.html`;
+          const relativeFile = `dom-snapshots/${fileName}`;
+          const fullPath = path.join(snapshotsDir, fileName);
+
+          const headerComment = `<!--
+  🛡️ ScannerKit DOM Snapshot
+  Paso: ${idx + 1}
+  Acción: ${action.actionType}
+  ID Acción: ${action.id}
+  Fecha: ${action.timestamp}
+  URL: ${action.url}
+  Selector Sugerido: ${action.suggestedLocator || 'N/A'}
+  Elemento Accionado: <${action.target?.tag || 'desconocido'}> ${action.target?.text ? `"${action.target.text}"` : ''}
+  Nota: El elemento objetivo de esta acción está marcado en este HTML con: data-sk-action-target="true"
+-->\n`;
+
+          fs.writeFileSync(fullPath, headerComment + snapshot, 'utf-8');
+          action.domSnapshotFile = relativeFile;
+          totalSnapshotsSaved++;
+        }
+      });
+
+      if (totalSnapshotsSaved > 0) {
+        console.log(`[TelemetryExtractor] 📸 Guardados ${totalSnapshotsSaved} snapshots completos del DOM en: ${snapshotsDir}`);
+      }
+    }
+
     const report: ExecutionSequenceReport = {
       generatedAt: new Date().toISOString(),
       totalActionsCaptured: this.actions.length,
+      totalDomSnapshotsSaved: totalSnapshotsSaved,
       uniqueRoutesDiscovered: this.routesMap.size,
       popupsDetected: this.popupsDetected,
       actions: this.actions,

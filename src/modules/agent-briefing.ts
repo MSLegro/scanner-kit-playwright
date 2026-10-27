@@ -442,6 +442,38 @@ export class AgentBriefing {
     }
     lines.push(``);
     lines.push(`---`);
+    lines.push(``);
+
+    // 9. SECUENCIA CRONOLÓGICA DE ACCIONES Y SNAPSHOTS DEL DOM
+    lines.push(`## 📸 9. Secuencia de Acciones y Snapshots Forenses del DOM (\`dom-snapshots/\`)`);
+    if (data.executionSequence && data.executionSequence.actions.length > 0) {
+      const snapCount = data.executionSequence.actions.filter((a) => a.domSnapshotFile).length;
+      lines.push(`Se capturaron **${data.executionSequence.actions.length} acciones** cronológicas, de las cuales **${snapCount} cuentan con snapshot HTML completo del DOM**.`);
+      lines.push(``);
+      lines.push(`> 💡 **CÓMO USAR LOS SNAPSHOTS DEL DOM (\`dom-snapshots/\`):**`);
+      lines.push(`> Cada archivo HTML contiene la radiografía limpia del DOM (incluyendo iframes y estado de inputs) en el instante exacto de la acción.`);
+      lines.push(`> El elemento que recibió la interacción está etiquetado con: \`data-sk-action-target="true"\`.`);
+      lines.push(``);
+      lines.push(`| Paso | Tipo Acción | Elemento / Objetivo | Selector Sugerido | Snapshot DOM |`);
+      lines.push(`| :---: | :--- | :--- | :--- | :--- |`);
+
+      data.executionSequence.actions.forEach((act, idx) => {
+        const stepNum = idx + 1;
+        const targetDesc = act.target?.text
+          ? `\`<${act.target.tag}>\` "${act.target.text.slice(0, 30)}"`
+          : act.target?.id
+          ? `\`#${act.target.id}\``
+          : `\`<${act.target?.tag || 'window'}>\``;
+        const locatorStr = act.suggestedLocator ? `\`${act.suggestedLocator}\`` : '*N/A*';
+        const snapshotLink = act.domSnapshotFile ? `[\`${act.domSnapshotFile}\`](${act.domSnapshotFile})` : '*Sin snapshot*';
+
+        lines.push(`| ${stepNum} | \`${act.actionType}\` | ${targetDesc} | ${locatorStr} | ${snapshotLink} |`);
+      });
+    } else {
+      lines.push(`- No se registraron acciones interactivas durante la auditoría.`);
+    }
+    lines.push(``);
+    lines.push(`---`);
     lines.push(`*Generado con 🛡️⚡ scanner-kit-playwright v1.1.0*`);
 
     return lines.join('\n');

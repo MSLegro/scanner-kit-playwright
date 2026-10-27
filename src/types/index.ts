@@ -98,6 +98,13 @@ export interface ScannerKitOptions {
    * Por defecto: true.
    */
   downloadBrandAssets?: boolean;
+
+  /**
+   * Activar captura automática de instantáneas completas y limpias del DOM por cada acción
+   * en la subcarpeta ./blueprint/<target>/dom-snapshots/.
+   * Por defecto: true.
+   */
+  domSnapshotsMode?: boolean;
 }
 
 /**
@@ -158,6 +165,11 @@ export interface ExportArtifactsResult {
    * Directorio donde se descargaron los recursos gráficos de marca (brand-assets/).
    */
   brandAssetsDir?: string;
+
+  /**
+   * Directorio donde se almacenaron las instantáneas completas del DOM por acción (dom-snapshots/).
+   */
+  domSnapshotsDir?: string;
 }
 
 /**
@@ -377,6 +389,15 @@ export interface UserActionRecord {
     recommendedGoto: string;
     reason: string;
   };
+  /**
+   * Ruta relativa al archivo HTML con el snapshot completo del DOM en el momento de la acción.
+   * Ejemplo: "dom-snapshots/step-001-click-btn-fetch-invoices.html"
+   */
+  domSnapshotFile?: string;
+  /**
+   * Muestra abreviada de la estructura HTML circundante al elemento accionado.
+   */
+  domSnapshotSnippet?: string;
 }
 
 /**
@@ -385,6 +406,7 @@ export interface UserActionRecord {
 export interface ExecutionSequenceReport {
   generatedAt: string;
   totalActionsCaptured: number;
+  totalDomSnapshotsSaved?: number;
   uniqueRoutesDiscovered: number;
   popupsDetected?: PopupEvent[];
   actions: UserActionRecord[];

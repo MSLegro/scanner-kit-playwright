@@ -382,6 +382,9 @@ async function runCli() {
     if (exported.brandAssetsDir && fs.existsSync(exported.brandAssetsDir)) {
       console.log(`🖼️  Recursos de Marca Descargados: ${exported.brandAssetsDir}`);
     }
+    if (exported.domSnapshotsDir && fs.existsSync(exported.domSnapshotsDir)) {
+      console.log(`📸 Snapshots Forenses del DOM: ${exported.domSnapshotsDir}`);
+    }
     console.log('===============================================================\n');
 
     await scanner.close({ exportArtifacts: false });

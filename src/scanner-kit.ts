@@ -171,12 +171,16 @@ export class ScannerKit {
       reconEngine.attachToPage(page, { handleDialogsPassively: !evasionManager });
     }
 
-    // 8. Configurar TelemetryExtractor sigiloso (acciones, selectores, contratos API, route tracker)
+    // 8. Configurar TelemetryExtractor sigiloso (acciones, selectores, contratos API, route tracker, dom-snapshots)
     const telemetryMode = options.telemetryMode ?? true;
     let telemetryExtractor: TelemetryExtractor | undefined;
     if (telemetryMode) {
-      telemetryExtractor = new TelemetryExtractor();
-      await telemetryExtractor.attach(page, context);
+      telemetryExtractor = new TelemetryExtractor({
+        domSnapshotsMode: options.domSnapshotsMode !== false
+      });
+      await telemetryExtractor.attach(page, context, {
+        domSnapshotsMode: options.domSnapshotsMode !== false
+      });
     }
 
     // 9. Registrar seguimiento reactivo de storage (permite guardar cookies y storage aun si se cierra con la [X])
@@ -241,7 +245,9 @@ export class ScannerKit {
       this._reconEngine.attachToPage(page, { handleDialogsPassively: !this._evasionManager });
     }
     if (this._telemetryExtractor) {
-      await this._telemetryExtractor.attach(page, this._context);
+      await this._telemetryExtractor.attach(page, this._context, {
+        domSnapshotsMode: this._options.domSnapshotsMode !== false
+      });
     }
     SessionManager.trackPageStorage(page);
     return page;
@@ -457,6 +463,11 @@ export class ScannerKit {
         results.sequenceFile = sequencePath;
         results.selectorsFile = selectorsPath;
         results.contractsFile = contractsPath;
+
+        const snapshotsDir = path.join(targetDir, 'dom-snapshots');
+        if (fs.existsSync(snapshotsDir) && (sequenceReport?.totalDomSnapshotsSaved || 0) > 0) {
+          results.domSnapshotsDir = snapshotsDir;
+        }
       } catch (e) {
         console.warn('[ScannerKit] No se pudo exportar telemetría:', (e as Error).message);
       }
