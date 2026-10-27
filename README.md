@@ -128,7 +128,7 @@ mi-nuevo-bot/
         ├── selectors-map.json         # 🎯 Matriz de estabilidad de locators (EXCELLENT a FRAGILE)
         ├── api-contracts.json         # 🌐 Contratos XHR/Fetch con payloads y esquemas JSON tipados
         ├── recon-report.json          # 🛡️ Diagnóstico de WAFs, potencial de ahorro Turbo y red
-        ├── session-backup.json        # 🔑 Respaldo de cookies HttpOnly, localStorage y sessionStorage
+        ├── session-backup.json        # 🔑 Molde forense de cookies HttpOnly, localStorage y sessionStorage
         └── brand-assets/              # 🖼️ Recursos gráficos descargados (favicon, logos SVG/PNG, banners)
 ```
 
@@ -139,12 +139,15 @@ mi-nuevo-bot/
 El archivo **`prompt-context.md`** está redactado y formateado como una orden de trabajo lista para que se la pegues directamente a tu Agente de IA (Cursor, Claude, Antigravity, ChatGPT, Copilot). 
 
 El archivo ya le explica al agente:
-1. La identidad visual del portal (título, marca, logos y URLs de recursos gráficos listos para documentar).
-2. Las precauciones anti-bot a tomar.
-3. Cómo saltarse menús lentos usando las rutas descubiertas (`page.goto`).
-4. El diccionario exacto de opciones para selects y campos de formulario.
-5. Cómo hacer bypass de la interfaz usando llamadas REST directas (`page.request.post()`).
-6. Los selectores Playwright con fiabilidad `HIGH` y `EXCELLENT`.
+1. La directiva **Blueprint-First**: el plano es una radiografía forense offline, prohibiendo re-scrapear innecesariamente.
+2. La identidad visual del portal (título, marca, logos y URLs de recursos gráficos listos para documentar).
+3. Las precauciones anti-bot a tomar.
+4. El molde de persistencia para estructurar un `SessionManager` dinámico con credenciales en `.env` (sin leer JSONs estáticos en producción).
+5. Cómo saltarse menús lentos usando las rutas descubiertas (`page.goto`).
+6. El diccionario exacto de opciones para selects y campos de formulario.
+7. Cómo hacer bypass de la interfaz usando llamadas REST directas parametrizadas (`page.request.post()`) con redaction de secretos.
+8. La regla crítica para popups/visores (captura concurrente con `page.waitForEvent('popup')` en vez de `page.goto` en frío).
+9. Los selectores Playwright con fiabilidad `HIGH` y `EXCELLENT`.
 
 En tu proyecto final, solo instalas Playwright nativo:
 
@@ -152,20 +155,26 @@ En tu proyecto final, solo instalas Playwright nativo:
 pnpm add -D @playwright/test
 ```
 
-Y programas tu bot utilizando la inteligencia descubierta en los JSONs:
+Y programas tu bot utilizando la inteligencia descubierta en los JSONs con arquitectura desacoplada:
 
 ```typescript
 import { test } from '@playwright/test';
-import * as fs from 'fs';
 
 test('Extracción Directa sin Tocar la Interfaz', async ({ page }) => {
-  // 1. Cargar las cookies descubiertas en session-backup.json
-  const session = JSON.parse(fs.readFileSync('./blueprint/portal.nuevaeps.com.co/session-backup.json', 'utf8'));
-  await page.context().addCookies(session.cookies);
+  // 1. Autenticación dinámica (utilizando el molde de cookies descubierto en session-backup.json)
+  const loginRes = await page.request.post('https://portal.nuevaeps.com.co/api/auth/login', {
+    data: {
+      username: process.env.PORTAL_USER,
+      password: process.env.PORTAL_PASSWORD
+    }
+  });
+  const { token } = await loginRes.json();
+  await page.context().addCookies([{ name: 'SESSION_ID', value: token, domain: 'portal.nuevaeps.com.co', path: '/' }]);
 
-  // 2. Extraer sessionId y consumir directamente la API JSON descubierta en api-contracts.json
+  // 2. Consumir directamente el endpoint descubierto en api-contracts.json
   // ¡Sin hacer clics en calendarios ni scraping de tablas lentas!
   const response = await page.request.post('https://portal.nuevaeps.com.co/report_portal/v1/api/autorizaciones/reporteAutorizacinesXIPS', {
+    headers: { 'Authorization': `Bearer ${token}` },
     data: { page: 1, itemsPerPage: 100, filter: '' }
   });
 

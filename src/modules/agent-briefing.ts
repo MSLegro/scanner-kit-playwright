@@ -31,25 +31,92 @@ export interface AgentBriefingInput {
  * como contexto de entrada (prompt) por modelos de lenguaje y agentes de programación
  * (Claude, Cursor, Copilot, Antigravity, etc.).
  *
- * Su propósito es eliminar las alucinaciones del agente, proveyéndole:
- * - El diccionario exacto de campos y opciones de formularios para aplicar reglas de negocio.
- * - Atajos directos por URL y API REST para evitar navegación lenta.
- * - Advertencias de WAFs, iframes y ventanas emergentes (popups).
- * - Snippets de código Playwright listos para ensamblar.
+ * Directiva: BLUEPRINT-FIRST & FORENSIC-ONLY
+ * - Es una radiografía técnica forense offline, NUNCA una dependencia de runtime.
+ * - Prohíbe el re-scraping innecesario ya que toda la verdad está capturada.
+ * - Evita el hardcoding de sesiones o tokens estáticos.
+ * - Enmascara datos sensibles y promueve clientes tipados parametrizados.
  */
 export class AgentBriefing {
+  /**
+   * Comprueba si una clave de payload o querystring representa información confidencial.
+   */
+  private static isSensitiveKey(key: string): boolean {
+    return /(password|passwd|pass|pwd|token|secret|bearer|apikey|api_key|credential|authorization|auth_token)/i.test(key);
+  }
+
+  /**
+   * Enmascara valores sensibles en payloads de prueba (JSON).
+   */
+  private static redactPayload(payload: unknown, depth = 0): unknown {
+    if (depth > 8 || payload === null || typeof payload !== 'object') {
+      return payload;
+    }
+
+    if (Array.isArray(payload)) {
+      return payload.slice(0, 10).map((item) => AgentBriefing.redactPayload(item, depth + 1));
+    }
+
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(payload as Record<string, unknown>)) {
+      if (AgentBriefing.isSensitiveKey(k)) {
+        result[k] = '[REDACTED_SECRET - Configurar en .env]';
+      } else if (typeof v === 'string' && /^ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/.test(v)) {
+        result[k] = '[REDACTED_JWT_TOKEN]';
+      } else if (v !== null && typeof v === 'object') {
+        result[k] = AgentBriefing.redactPayload(v, depth + 1);
+      } else {
+        result[k] = v;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Enmascara parámetros de consulta sensibles en URLs observadas.
+   */
+  private static redactUrl(urlString: string): string {
+    try {
+      const parsed = new URL(urlString);
+      const sensitiveParamRegex = /(token|auth|key|pass|secret|credential|session|jwt)/i;
+      let mutated = false;
+
+      for (const [key] of parsed.searchParams.entries()) {
+        if (sensitiveParamRegex.test(key)) {
+          parsed.searchParams.set(key, '[REDACTED]');
+          mutated = true;
+        }
+      }
+
+      if (parsed.password) {
+        parsed.password = '[REDACTED]';
+        mutated = true;
+      }
+
+      return mutated ? parsed.toString() : urlString;
+    } catch {
+      return urlString;
+    }
+  }
+
   /**
    * Genera el contenido Markdown estructurado del briefing para el agente.
    */
   public static generateMarkdown(data: AgentBriefingInput): string {
     const lines: string[] = [];
 
-    lines.push(`# 🤖 Briefing Técnico para Agente de IA: Automatización RPA`);
-    lines.push(`> Este documento fue generado automáticamente por **scanner-kit-playwright** tras auditar el portal objetivo.`);
-    lines.push(`> Contiene la verdad técnica del sistema web (selectores certificados, endpoints, esquemas de formularios y sesión) para que programes el bot en Playwright nativo aplicando las reglas de negocio sin alucinaciones.`);
+    lines.push(`# 🤖 Briefing Técnico para Agente de IA: Automatización RPA (Directiva Blueprint-First)`);
+    lines.push(`> **DIRECTIVA CRÍTICA: BLUEPRINT-FIRST & FORENSIC-ONLY**`);
+    lines.push(`> `);
+    lines.push(`> 🏛️ **Este directorio (\`${data.outputDirectory}\`) es una Radiografía Forense Offline (Plano Arquitectónico)** generada automáticamente por **scanner-kit-playwright** tras auditar el portal objetivo.`);
+    lines.push(`> **NUNCA debe ser una dependencia de runtime de tu bot en producción.**`);
+    lines.push(`> `);
+    lines.push(`> 🛑 **PROHIBICIÓN ESTRICTA DE RE-SCRAPING:**`);
+    lines.push(`> **PROHIBIDO abrir un navegador para volver a scrapear o explorar esta página.** Toda la verdad técnica de red, DOM, formularios y secuencia de ejecución ya está capturada con rigor forense en los artefactos \`api-contracts.json\`, \`execution-sequence.json\`, \`selectors-map.json\` y \`form-schema.json\`.`);
+    lines.push(`> Tu misión como Agente es ensamblar un bot modular, desacoplado y resiliente en Playwright / TypeScript a partir de esta radiografía, sin inventar selectores ni asumir flujos inexistentes.`);
     lines.push(``);
-    lines.push(`- **Target URL:** \`${data.targetUrl}\``);
-    lines.push(`- **Directorio del Blueprint:** \`${data.outputDirectory}\``);
+    lines.push(`- **Target URL Auditada:** \`${data.targetUrl}\``);
+    lines.push(`- **Directorio del Blueprint Forense:** \`${data.outputDirectory}\``);
     lines.push(`- **Fecha de Auditoría:** ${new Date().toLocaleString()}`);
     lines.push(``);
     lines.push(`---`);
@@ -135,29 +202,62 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 3. SESIÓN Y BYPASS DE LOGIN
-    lines.push(`## 🔑 3. Estado de Sesión y Autenticación (Bypass de Login)`);
+    // 3. SESIÓN Y AUTENTICACIÓN DINÁMICA (MOLDE FORENSE)
+    lines.push(`## 🔑 3. Estado de Sesión y Autenticación (Molde Forense de Persistencia)`);
     if (data.sessionBackup) {
-      const cookieCount = data.sessionBackup.cookies?.length || 0;
-      const localKeys = Object.keys(data.sessionBackup.localStorage || {}).length;
-      const sessionKeys = Object.keys(data.sessionBackup.sessionStorage || {}).length;
+      const cookies = data.sessionBackup.cookies || [];
+      const cookieCount = cookies.length;
+      const localKeys = Object.keys(data.sessionBackup.localStorage || {});
+      const sessionKeys = Object.keys(data.sessionBackup.sessionStorage || {});
 
-      lines.push(`El escáner capturó la sesión activa en \`session-backup.json\` (**${cookieCount} cookies**, **${localKeys} llaves de localStorage**, **${sessionKeys} de sessionStorage**).`);
+      lines.push(`> ⚠️ **REGLA ARQUITECTÓNICA OBLIGATORIA (CERO DEPENDENCIAS ESTÁTICAS DE SESIÓN):**`);
+      lines.push(`> **PROHIBIDO leer \`session-backup.json\` con \`fs.readFileSync\` en tu bot de producción o reutilizar tokens efímeros capturados.**`);
+      lines.push(`> El archivo \`session-backup.json\` es una **muestra forense estática** de la estructura de estado exigida por el portal tras autenticarse.`);
+      lines.push(`> `);
+      lines.push(`> **Tu flujo de implementación como Agente debe ser:**`);
+      lines.push(`> 1. **Identificar el login real:** Busca el endpoint de autenticación en \`api-contracts.json\` (o los selectores del login en \`form-schema.json\`).`);
+      lines.push(`> 2. **Construir un \`SessionManager\` dinámico:** Escribe un módulo que obtenga credenciales seguras de variables de entorno (\`process.env.PORTAL_USER\`, \`process.env.PORTAL_PASS\`) y gestione el ciclo de vida del token renovándolo ante errores HTTP 401.`);
+      lines.push(`> 3. **Usar estas llaves como molde de hidratación:** Si requieres saltarte la UI e inyectar el estado directamente en un \`BrowserContext\`, usa la lista forense a continuación como el contrato de llaves que tu \`SessionManager\` debe poblar.`);
       lines.push(``);
-      lines.push(`**Cómo precargar la sesión en tu bot Playwright para saltarte el login:**`);
+      lines.push(`### 🧬 Molde de Persistencia Capturado en Auditoría:`);
+      lines.push(`- **Cookies Requeridas (${cookieCount}):** ${cookies.map((c) => `\`${c.name}\` (Domain: \`${c.domain}\`, HttpOnly: ${c.httpOnly})`).join(', ') || '*Ninguna*'}`);
+      lines.push(`- **Llaves de \`localStorage\` (${localKeys.length}):** ${localKeys.map((k) => `\`${k}\``).join(', ') || '*Ninguna*'}`);
+      lines.push(`- **Llaves de \`sessionStorage\` (${sessionKeys.length}):** ${sessionKeys.map((k) => `\`${k}\``).join(', ') || '*Ninguna*'}`);
+      lines.push(``);
+      lines.push(`**Ejemplo de implementación arquitectónica limpia (\`SessionManager\` dinámico sin leer JSONs estáticos):**`);
       lines.push('```typescript');
-      lines.push("import * as fs from 'fs';");
+      lines.push("import { Browser, BrowserContext } from 'playwright';");
       lines.push('');
-      lines.push("// Cargar cookies en el BrowserContext antes de navegar");
-      lines.push("const session = JSON.parse(fs.readFileSync('./session-backup.json', 'utf-8'));");
-      lines.push("await context.addCookies(session.cookies);");
+      lines.push("export class PortalSessionManager {");
+      lines.push("  /**");
+      lines.push("   * Autentica dinámicamente y prepara el BrowserContext con las credenciales del entorno.");
+      lines.push("   * NUNCA lee archivos JSON estáticos en producción.");
+      lines.push("   */");
+      lines.push("  public static async createAuthenticatedContext(browser: Browser): Promise<BrowserContext> {");
+      lines.push("    const context = await browser.newContext();");
+      lines.push("    const username = process.env.PORTAL_USERNAME;");
+      lines.push("    const password = process.env.PORTAL_PASSWORD;");
+      lines.push("    if (!username || !password) {");
+      lines.push("      throw new Error('Credenciales PORTAL_USERNAME y PORTAL_PASSWORD no configuradas en .env');");
+      lines.push("    }");
       lines.push('');
-      lines.push("// Si el portal utiliza tokens en localStorage, inyéctalos en page.addInitScript:");
-      lines.push("await page.addInitScript((storage) => {");
-      lines.push("  for (const [k, v] of Object.entries(storage.local)) {");
-      lines.push("    localStorage.setItem(k, v);");
+      lines.push("    // Opción 1: Autenticación rápida por API (identificada en api-contracts.json)");
+      lines.push("    // const loginRes = await context.request.post('https://portal.../api/auth/login', {");
+      lines.push("    //   data: { username, password }");
+      lines.push("    // });");
+      lines.push("    // const { token } = await loginRes.json();");
+      lines.push("    // await context.addCookies([{ name: 'AUTH_COOKIE', value: token, domain: '...', path: '/' }]);");
+      lines.push('');
+      lines.push("    // Opción 2: Autenticación por UI (usando selectores catalogados en form-schema.json)");
+      lines.push("    // const page = await context.newPage();");
+      lines.push("    // await page.goto('https://portal.../login');");
+      lines.push("    // await page.locator('#txtUser').fill(username);");
+      lines.push("    // await page.locator('#txtPassword').fill(password);");
+      lines.push("    // await page.locator('#btnSubmit').click();");
+      lines.push('');
+      lines.push("    return context;");
       lines.push("  }");
-      lines.push("}, { local: session.localStorage });");
+      lines.push("}");
       lines.push('```');
     } else {
       lines.push(`- No se dispone de volcado previo de sesión.`);
@@ -221,25 +321,58 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 6. ATAJO POR API REST DIRECTA (BYPASS DE UI)
+    // 6. ATAJO POR API REST DIRECTA (BYPASS DE UI Y PARAMETRIZACIÓN)
     lines.push(`## 🌐 6. Atajo por API REST Directa (Bypass de Interfaz Gráfica)`);
     if (data.apiContracts && data.apiContracts.totalContractsDiscovered > 0) {
       lines.push(`Se descubrieron **${data.apiContracts.totalContractsDiscovered} endpoints REST** que alimentan los datos del portal.`);
-      lines.push(`Si tu regla de negocio solo requiere consultar o descargar datos, **puedes llamar directamente a estos endpoints sin tocar la UI**:`);
+      lines.push(``);
+      lines.push(`> 💡 **NOTA DE INGENIERÍA: PARAMETRIZACIÓN Y SEGURIDAD OBLIGATORIA:**`);
+      lines.push(`> Todos los valores en querystrings, headers y payloads observados abajo (IDs, consecutivos, fechas de corte, tokens o filtros) son **MUESTRAS FORENSES capturadas durante la auditoría**.`);
+      lines.push(`> **PROHIBIDO hardcodear estos IDs o fechas de muestra en tu código.**`);
+      lines.push(`> Debes convertir cada endpoint en una función modular y fuertemente tipada (usando interfaces TypeScript / DTOs), parametrizando las variables de negocio y leyendo credenciales o tokens desde \`process.env\`. Los campos sensibles fueron redactados automáticamente.`);
       lines.push(``);
 
       data.apiContracts.contracts.forEach((ep, idx) => {
+        const safeUrl = AgentBriefing.redactUrl(ep.url);
+        const safePayload = AgentBriefing.redactPayload(ep.requestPayloadSample);
+
         lines.push(`### [${idx + 1}] \`${ep.method} ${ep.pathname}\``);
-        lines.push(`- **URL Completa:** \`${ep.url}\``);
+        lines.push(`- **URL Base / Endpoint:** \`${safeUrl}\``);
         lines.push(`- **Latencia observada:** ~${ep.averageLatencyMs} ms`);
-        lines.push(`- **Consumo directo con Playwright APIRequestContext:**`);
+        lines.push(`- **Consumo directo parametrizado con Playwright APIRequestContext:**`);
         lines.push('```typescript');
-        lines.push(`const response = await page.request.${ep.method.toLowerCase()}('${ep.url}', {`);
+        lines.push("import { APIRequestContext } from 'playwright';");
+        lines.push('');
+        lines.push(`// DTO para parametrizar las reglas de negocio`);
+        lines.push(`export interface ${ep.method === 'GET' ? 'Get' : 'Post'}${idx + 1}QueryParams {`);
+        lines.push(`  // Parametriza aquí los filtros reales requeridos por tu caso de uso`);
+        lines.push(`  [key: string]: unknown;`);
+        lines.push(`}`);
+        lines.push('');
+        lines.push(`export async function callEndpoint${idx + 1}(request: APIRequestContext, params: ${ep.method === 'GET' ? 'Get' : 'Post'}${idx + 1}QueryParams = {}) {`);
+        lines.push(`  const response = await request.${ep.method.toLowerCase()}('${safeUrl}', {`);
         if (ep.method === 'POST' || ep.method === 'PUT' || ep.method === 'PATCH') {
-          lines.push(`  data: ${JSON.stringify(ep.requestPayloadSample || {}, null, 2)}`);
+          lines.push(`    headers: {`);
+          lines.push(`      'Authorization': \`Bearer \${process.env.PORTAL_API_TOKEN}\``);
+          lines.push(`    },`);
+          lines.push(`    data: {`);
+          lines.push(`      // Muestra forense redactada como referencia de estructura:`);
+          const payloadFormatted = JSON.stringify(safePayload || {}, null, 6)
+            .split('\n')
+            .map((line, i) => (i === 0 ? line : `    ${line}`))
+            .join('\n');
+          lines.push(`      ...${payloadFormatted},`);
+          lines.push(`      ...params`);
+          lines.push(`    }`);
+        } else {
+          lines.push(`    headers: {`);
+          lines.push(`      'Authorization': \`Bearer \${process.env.PORTAL_API_TOKEN}\``);
+          lines.push(`    },`);
+          lines.push(`    params: params as Record<string, string>`);
         }
-        lines.push(`});`);
-        lines.push(`const data = await response.json();`);
+        lines.push(`  });`);
+        lines.push(`  return await response.json();`);
+        lines.push(`}`);
         lines.push('```');
         lines.push(``);
       });
@@ -251,21 +384,33 @@ export class AgentBriefing {
     lines.push(``);
 
     // 7. VENTANAS EMERGENTES / POPUPS
-    lines.push(`## 🪟 7. Detección de Ventanas Emergentes (Popups)`);
+    lines.push(`## 🪟 7. Detección de Ventanas Emergentes (Popups) y Visores`);
     const popups = data.executionSequence?.popupsDetected || [];
     if (popups.length > 0) {
-      lines.push(`> ⚠️ **Atención Agente:** Se detectaron **${popups.length} ventanas emergentes** abiertas durante la sesión.`);
-      lines.push(`Debes usar el patrón \`page.waitForEvent('popup')\` concurrentemente con el clic disparador:`);
+      lines.push(`> ⚠️ **REGLA ARQUITECTÓNICA CRÍTICA: PROHIBIDO NAVEGAR EN FRÍO A POPUPS/VISORES**`);
+      lines.push(`> **NUNCA intentes abrir un popup o visor de reportes directamente con \`page.goto(popupUrl)\` en un navegador en blanco.**`);
+      lines.push(`> Muchos portales empresariales y visores de documentos (ej. visores PDF como \`viewreport.html\`, JasperReports, Crystal Reports o rutas como \`/DXXRDV\`) **fallan catastróficamente en frío** porque dependen estrictamente de:`);
+      lines.push(`> 1. El estado previo almacenado en \`sessionStorage\` o cookies de la ventana padre.`);
+      lines.push(`> 2. Una llamada POST/GET preparatoria (observable en \`execution-sequence.json\` y \`api-contracts.json\`) que genera el token o ticket efímero del documento.`);
+      lines.push(`> `);
+      lines.push(`> **Acción requerida para el Agente:**`);
+      lines.push(`> 1. **Revisa \`execution-sequence.json\`:** Reproduce la secuencia cronológica de acciones previas y clics disparadores.`);
+      lines.push(`> 2. **Captura concurrente con \`page.waitForEvent('popup')\`:** Dispara el evento siempre en concurrencia con la acción que lo origina para conservar el contexto y estado.`);
       lines.push(``);
+
       popups.forEach((pop, idx) => {
-        lines.push(`### Popup #${idx + 1}: "${pop.title || pop.url}"`);
-        lines.push(`- **URL emergente:** \`${pop.url}\``);
+        const safePopupUrl = AgentBriefing.redactUrl(pop.url);
+        lines.push(`### Popup #${idx + 1}: "${pop.title || safePopupUrl}"`);
+        lines.push(`- **URL emergente observada:** \`${safePopupUrl}\``);
         lines.push('```typescript');
+        lines.push(`// Patrón de intercepción concurrente en ventana padre:`);
         lines.push(`const [popup] = await Promise.all([`);
-        lines.push(`  page.waitForEvent('popup'),`);
-        lines.push(`  page.locator('SELECTOR_QUE_DISPARA_EL_POPUP').click()`);
+        lines.push(`  page.waitForEvent('popup', { timeout: 15000 }),`);
+        lines.push(`  // Localiza el selector exacto del botón disparador en execution-sequence.json / selectors-map.json:`);
+        lines.push(`  page.locator('SELECTOR_DISPARADOR_DEL_REPORTE').click()`);
         lines.push(`]);`);
         lines.push(`await popup.waitForLoadState('domcontentloaded');`);
+        lines.push(`// Interactuar con el popup ya hidratado con la sesión padre`);
         lines.push('```');
         lines.push(``);
       });

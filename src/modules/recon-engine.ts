@@ -169,7 +169,7 @@ export class ReconEngine {
           provider: 'Cloudflare Turnstile / Challenge',
           evidenceUrl: url.slice(0, 140),
           rpaStrategy:
-            'Mantener turboMode: false y evasionMode: false para no alterar prototipos nativos. Reutilizar cookie cf_clearance desde session-backup.json y ejecutar con canal Chrome nativo.'
+            'Mantener turboMode: false y evasionMode: false para no alterar prototipos nativos. Conservar la cookie cf_clearance viva mediante tu SessionManager dinámico y ejecutar con canal Chrome nativo.'
         });
       }
     } else if (lower.includes('google.com/recaptcha') || lower.includes('gstatic.com/recaptcha')) {
@@ -178,7 +178,7 @@ export class ReconEngine {
           provider: 'Google reCAPTCHA',
           evidenceUrl: url.slice(0, 140),
           rpaStrategy:
-            'Reutilizar sesión autenticada (session-backup.json) para evitar disparar el reCAPTCHA en cada ejecución.'
+            'Mantener la sesión autenticada viva en tu SessionManager dinámico para evitar disparar el reCAPTCHA en cada ejecución.'
         });
       }
     } else if (lower.includes('hcaptcha.com')) {
@@ -186,7 +186,7 @@ export class ReconEngine {
         this.antiBotWafMap.set('hCaptcha', {
           provider: 'hCaptcha',
           evidenceUrl: url.slice(0, 140),
-          rpaStrategy: 'Reutilizar cookies de sesión exportadas y mantener navegador sin bloqueo de recursos.'
+          rpaStrategy: 'Mantener cookies de sesión dinámicas y ejecutar navegador sin bloqueo de recursos visuales.'
         });
       }
     }
@@ -223,7 +223,7 @@ export class ReconEngine {
               provider: 'Cloudflare Waiting Room',
               evidenceUrl: urlString,
               rpaStrategy:
-                'Inyectar la cookie __cfwaitingroom_portal desde session-backup.json para conservar el turno en la cola virtual.'
+                'Preservar la cookie __cfwaitingroom_portal en el SessionManager para conservar el turno en la cola virtual.'
             });
           }
         }

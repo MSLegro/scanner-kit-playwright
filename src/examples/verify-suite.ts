@@ -135,7 +135,19 @@ async function runVerification() {
     if (!promptContext.includes('Identidad Visual y Recursos de Marca (Branding)')) {
       throw new Error('[FAIL] prompt-context.md no incluye la sección de Identidad Visual y Branding');
     }
-    console.log(`  ✓ prompt-context.md verificado con éxito (briefing ejecutivo con identidad visual generado para Agentes)`);
+    if (!promptContext.includes('BLUEPRINT-FIRST & FORENSIC-ONLY')) {
+      throw new Error('[FAIL] prompt-context.md no incluye la directiva Blueprint-First & Forensic-Only');
+    }
+    if (!promptContext.includes('PROHIBICIÓN ESTRICTA DE RE-SCRAPING')) {
+      throw new Error('[FAIL] prompt-context.md no incluye la prohibición estricta de re-scraping');
+    }
+    if (promptContext.includes("fs.readFileSync('./session-backup.json'")) {
+      throw new Error('[FAIL] prompt-context.md todavía contiene el snippet riesgoso fs.readFileSync session-backup.json');
+    }
+    if (!promptContext.includes('PROHIBIDO NAVEGAR EN FRÍO A POPUPS/VISORES')) {
+      throw new Error('[FAIL] prompt-context.md no advierte contra navegar en frío a popups/visores');
+    }
+    console.log(`  ✓ prompt-context.md verificado con éxito (directivas Blueprint-First, Forensic-Only y anti-hardcoding validadas)`);
 
     // Validar contenido de brand-identity.json
     const brandData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'brand-identity.json'), 'utf-8'));
