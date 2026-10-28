@@ -42,6 +42,70 @@ export class TestServer {
           return;
         }
 
+        // 1.1. Endpoint de Login para probar Token Lineage / Provenance
+        if (url.pathname === '/api/auth/login') {
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Set-Cookie': ['auth_session=sess_abc_token_9988; Path=/; HttpOnly']
+          });
+          res.end(
+            JSON.stringify({
+              success: true,
+              token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.corp_secret_token_erp',
+              user: { username: 'admin_audit', role: 'FINANCIAL_DIRECTOR' }
+            })
+          );
+          return;
+        }
+
+        // 1.2. Endpoint de GraphQL para probar desagregación por operationName
+        if (url.pathname === '/api/graphql') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              data: {
+                summary: {
+                  totalInvoices: 3,
+                  totalBalance: 52900.5
+                }
+              }
+            })
+          );
+          return;
+        }
+
+        // 1.3. Endpoint de Descarga Binaria (PDF con Content-Disposition: attachment)
+        if (url.pathname === '/api/v1/download/invoice-report.pdf') {
+          res.writeHead(200, {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': 'attachment; filename="factura_enero_2026.pdf"'
+          });
+          res.end(Buffer.from('%PDF-1.4\n1 0 obj\n<< /Title (Invoice Report) >>\nendobj\n%%EOF'));
+          return;
+        }
+
+        // 1.4. Endpoint de Estado Legacy JSF con ViewState
+        if (url.pathname === '/portal/legacy-jsf') {
+          if (req.method === 'POST') {
+            res.writeHead(200, { 'Content-Type': 'application/xml;charset=UTF-8' });
+            res.end(`<?xml version="1.0" encoding="utf-8"?><partial-response><changes><update id="jsf-output"><![CDATA[Procesado con ViewState]]></update></changes></partial-response>`);
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end(`
+            <!DOCTYPE html>
+            <html>
+            <body>
+              <form id="legacy-jsf-form" action="/portal/legacy-jsf" method="POST">
+                <input type="hidden" name="javax.faces.ViewState" value="stat_token_jsf_prod_998811" />
+                <button type="submit" id="btn-submit-jsf">Enviar Formulario JSF</button>
+              </form>
+            </body>
+            </html>
+          `);
+          return;
+        }
+
         // 2. Contenido dentro del iframe anidado
         if (url.pathname === '/nested-frame') {
           res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -95,6 +159,56 @@ export class TestServer {
           return;
         }
 
+        // 3.2. Script bundle frontend para minería estática de endpoints y satélites
+        if (url.pathname === '/js/app-bundle.js') {
+          res.writeHead(200, { 'Content-Type': 'application/javascript' });
+          res.end(`
+            // Bundle frontend compilado (app-bundle.js)
+            const AppConfig = {
+              version: '2026.1',
+              endpoints: {
+                invoices: '/api/v1/invoices',
+                pdfCompile: '/api/v1/reports/pdf/render',
+                excelExport: '/api/v1/export/excel',
+                docAttachment: '/documents/download/attachment'
+              },
+              services: {
+                reportingSatellite: 'http://localhost:5004/api/reporting/generate-pdf'
+              }
+            };
+            window.__ERP_CONFIG__ = AppConfig;
+            console.log('[AppBundle] Configuración de servicios cargada en memoria');
+          `);
+          return;
+        }
+
+        // 3.3. Plantilla de reporte Stimulsoft (.mrt en JSON)
+        if (url.pathname === '/reports/invoice-template.mrt') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              ReportVersion: '2026.1.1',
+              ReportName: 'InvoiceTemplateReport',
+              Dictionary: {
+                DataSources: [
+                  {
+                    Name: 'Invoices',
+                    Alias: 'Invoices',
+                    Columns: [
+                      { Name: 'id', Type: 'System.String' },
+                      { Name: 'amount', Type: 'System.Decimal' },
+                      { Name: 'currency', Type: 'System.String' },
+                      { Name: 'status', Type: 'System.String' }
+                    ],
+                    SqlCommand: 'SELECT id, amount, currency, status FROM Invoices'
+                  }
+                ]
+              }
+            })
+          );
+          return;
+        }
+
         // 4. Página principal del portal ERP simulado
         if (url.pathname === '/' || url.pathname === '/portal') {
           res.writeHead(200, {
@@ -113,6 +227,7 @@ export class TestServer {
               <meta property="og:site_name" content="Portal ERP Corporativo">
               <meta property="og:description" content="Sistema empresarial de gestión de tesorería y facturas.">
               <meta property="og:image" content="/assets/erp-logo.svg">
+              <script src="/js/app-bundle.js"></script>
               <style>
                 body { font-family: system-ui, sans-serif; margin: 30px; background-color: #f7f9fc; }
                 .card { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
@@ -167,6 +282,23 @@ export class TestServer {
                 </form>
               </div>
 
+              <!-- Formulario Legacy JSF para prueba de ViewState -->
+              <div class="card">
+                <h2>Portal Legacy JSF (JavaServer Faces)</h2>
+                <form id="legacy-jsf-form" action="/portal/legacy-jsf" method="POST">
+                  <input type="hidden" name="javax.faces.ViewState" value="stat_token_jsf_prod_998811" />
+                  <button id="btn-submit-jsf" type="button">Enviar Formulario JSF (Ajax)</button>
+                </form>
+              </div>
+
+              <!-- Descargas y GraphQL -->
+              <div class="card">
+                <h2>APIs Avanzadas y Descargas</h2>
+                <button id="btn-auth-login">1. Autenticar en API (Login)</button>
+                <button id="btn-fetch-graphql" style="margin-left: 8px;">2. Consultar GraphQL</button>
+                <button id="btn-download-pdf" style="margin-left: 8px;">3. Descargar Factura PDF</button>
+              </div>
+
               <!-- Botón de prueba para disparar Popup / Ventana emergente -->
               <div class="card">
                 <h2>Reportes Externos</h2>
@@ -214,6 +346,50 @@ export class TestServer {
                   } catch (e) {
                     console.error('Error fetching invoices:', e);
                   }
+                });
+
+                // Login previo para proveniencia del token
+                document.getElementById('btn-auth-login').addEventListener('click', async () => {
+                  try {
+                    await fetch('/api/auth/login', { method: 'POST' });
+                  } catch {}
+                });
+
+                // GraphQL con operationName
+                document.getElementById('btn-fetch-graphql').addEventListener('click', async () => {
+                  try {
+                    await fetch('/api/graphql', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        operationName: 'GetFinancialSummary',
+                        query: 'query GetFinancialSummary { summary { totalInvoices totalBalance } }'
+                      })
+                    });
+                  } catch {}
+                });
+
+                // Descarga binaria
+                document.getElementById('btn-download-pdf').addEventListener('click', async () => {
+                  try {
+                    await fetch('/api/v1/download/invoice-report.pdf');
+                  } catch {}
+                });
+
+                // Formulario JSF con ViewState y header Faces-Request
+                document.getElementById('btn-submit-jsf').addEventListener('click', async () => {
+                  try {
+                    const form = document.getElementById('legacy-jsf-form');
+                    const viewState = form.querySelector('input[name="javax.faces.ViewState"]').value;
+                    await fetch('/portal/legacy-jsf', {
+                      method: 'POST',
+                      headers: {
+                        'Faces-Request': 'partial/ajax',
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                      },
+                      body: 'javax.faces.ViewState=' + encodeURIComponent(viewState) + '&btn-submit-jsf=true'
+                    });
+                  } catch {}
                 });
               </script>
             </body>

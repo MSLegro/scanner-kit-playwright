@@ -11,10 +11,12 @@ import { TurboManager, TurboOptions } from './modules/turbo-manager';
 import { FormAnalyzer } from './modules/form-analyzer';
 import { AgentBriefing } from './modules/agent-briefing';
 import { BrandExtractor } from './modules/brand-extractor';
+import { StaticSurfaceMiner } from './modules/static-surface-miner';
 import {
   ApiContractsReport,
   BrandIdentityReport,
   ClickAndSpyOptions,
+  DiscoveredApiSurfaceReport,
   ExecutionSequenceReport,
   ExportArtifactsResult,
   FormSchemaReport,
@@ -43,6 +45,7 @@ export class ScannerKit {
   private _telemetryExtractor?: TelemetryExtractor;
   private _formAnalyzer: FormAnalyzer;
   private _brandExtractor: BrandExtractor;
+  private _staticSurfaceMiner?: StaticSurfaceMiner;
   private _options: ScannerKitOptions;
 
   private constructor(
@@ -53,7 +56,8 @@ export class ScannerKit {
     turboManager?: TurboManager,
     evasionManager?: EvasionManager,
     reconEngine?: ReconEngine,
-    telemetryExtractor?: TelemetryExtractor
+    telemetryExtractor?: TelemetryExtractor,
+    staticSurfaceMiner?: StaticSurfaceMiner
   ) {
     this._browser = browser;
     this._context = context;
@@ -65,6 +69,7 @@ export class ScannerKit {
     this._telemetryExtractor = telemetryExtractor;
     this._formAnalyzer = new FormAnalyzer();
     this._brandExtractor = new BrandExtractor();
+    this._staticSurfaceMiner = staticSurfaceMiner;
   }
 
   /**
@@ -183,10 +188,27 @@ export class ScannerKit {
       });
     }
 
-    // 9. Registrar seguimiento reactivo de storage (permite guardar cookies y storage aun si se cierra con la [X])
+    // 9. Configurar StaticSurfaceMiner pasivo (bundles JS, multi-puerto, satélites y plantillas)
+    let staticSurfaceMiner: StaticSurfaceMiner | undefined;
+    if (options.staticSurfaceMining !== false) {
+      staticSurfaceMiner = new StaticSurfaceMiner();
+      staticSurfaceMiner.attachToPage(page);
+    }
+
+    // 10. Registrar seguimiento reactivo de storage (permite guardar cookies y storage aun si se cierra con la [X])
     SessionManager.trackPageStorage(page);
 
-    return new ScannerKit(browser, context, page, options, turboManager, evasionManager, reconEngine, telemetryExtractor);
+    return new ScannerKit(
+      browser,
+      context,
+      page,
+      options,
+      turboManager,
+      evasionManager,
+      reconEngine,
+      telemetryExtractor,
+      staticSurfaceMiner
+    );
   }
 
   // --- Accesores Principales ---
@@ -209,6 +231,10 @@ export class ScannerKit {
 
   public get telemetry(): TelemetryExtractor | undefined {
     return this._telemetryExtractor;
+  }
+
+  public get staticSurfaceMiner(): StaticSurfaceMiner | undefined {
+    return this._staticSurfaceMiner;
   }
 
   public get formAnalyzer(): FormAnalyzer {
@@ -248,6 +274,9 @@ export class ScannerKit {
       await this._telemetryExtractor.attach(page, this._context, {
         domSnapshotsMode: this._options.domSnapshotsMode !== false
       });
+    }
+    if (this._staticSurfaceMiner) {
+      this._staticSurfaceMiner.attachToPage(page);
     }
     SessionManager.trackPageStorage(page);
     return page;
@@ -468,6 +497,17 @@ export class ScannerKit {
         if (fs.existsSync(snapshotsDir) && (sequenceReport?.totalDomSnapshotsSaved || 0) > 0) {
           results.domSnapshotsDir = snapshotsDir;
         }
+
+        if (sequenceReport?.downloadsCaptured && sequenceReport.downloadsCaptured.length > 0) {
+          const downloadsDir = path.join(targetDir, 'downloads');
+          if (!fs.existsSync(downloadsDir)) {
+            fs.mkdirSync(downloadsDir, { recursive: true });
+          }
+          const dlManifestPath = path.join(downloadsDir, 'downloads-manifest.json');
+          fs.writeFileSync(dlManifestPath, JSON.stringify(sequenceReport.downloadsCaptured, null, 2), 'utf-8');
+          results.downloadsDir = downloadsDir;
+          console.log(`[ScannerKit] 📥 Manifiesto de descargas guardado en: ${dlManifestPath}`);
+        }
       } catch (e) {
         console.warn('[ScannerKit] No se pudo exportar telemetría:', (e as Error).message);
       }
@@ -558,7 +598,38 @@ export class ScannerKit {
       }
     }
 
-    // 7. Briefing Consolidado para Agente de IA (prompt-context.md)
+    // 7. Minería Estática de Superficie de APIs, Satélites y Plantillas (StaticSurfaceMiner)
+    let discoveredSurface: DiscoveredApiSurfaceReport | null = null;
+    if (this._staticSurfaceMiner) {
+      try {
+        const liveEndpoints: string[] = [];
+        if (reconReport?.endpoints) {
+          reconReport.endpoints.forEach((ep) => {
+            liveEndpoints.push(ep.url);
+            liveEndpoints.push(ep.pathname);
+          });
+        }
+        if (contractsReport?.contracts) {
+          contractsReport.contracts.forEach((c) => {
+            liveEndpoints.push(c.url);
+            liveEndpoints.push(c.pathname);
+          });
+        }
+
+        const currentUrl = !this._page.isClosed() ? this._page.url() : (reconReport?.domainsContacted?.[0] || '');
+        discoveredSurface = this._staticSurfaceMiner.mineDiscoveredSurface(currentUrl, liveEndpoints);
+
+        if (discoveredSurface) {
+          const surfacePath = path.join(targetDir, 'discovered-api-surface.json');
+          this._staticSurfaceMiner.generateReport(surfacePath, discoveredSurface);
+          results.discoveredApiSurfaceFile = surfacePath;
+        }
+      } catch (e) {
+        console.warn('[ScannerKit] No se pudo minar superficie estática de APIs:', (e as Error).message);
+      }
+    }
+
+    // 8. Briefing Consolidado para Agente de IA (prompt-context.md)
     try {
       const promptContextPath = path.join(targetDir, 'prompt-context.md');
       AgentBriefing.savePromptContext(promptContextPath, {
@@ -571,7 +642,8 @@ export class ScannerKit {
         apiContracts: contractsReport,
         formSchema: formReport,
         accessibilityTree: accessibilityData,
-        brandIdentity: brandReport
+        brandIdentity: brandReport,
+        discoveredSurface
       });
       results.promptContextFile = promptContextPath;
     } catch (e) {

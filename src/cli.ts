@@ -385,6 +385,12 @@ async function runCli() {
     if (exported.domSnapshotsDir && fs.existsSync(exported.domSnapshotsDir)) {
       console.log(`📸 Snapshots Forenses del DOM: ${exported.domSnapshotsDir}`);
     }
+    if (exported.discoveredApiSurfaceFile && fs.existsSync(exported.discoveredApiSurfaceFile)) {
+      console.log(`🔍 Superficie de APIs y Bypass: ${exported.discoveredApiSurfaceFile}`);
+    }
+    if (exported.downloadsDir && fs.existsSync(exported.downloadsDir)) {
+      console.log(`📥 Descargas y Binarios Capturados: ${exported.downloadsDir}`);
+    }
     console.log('===============================================================\n');
 
     await scanner.close({ exportArtifacts: false });

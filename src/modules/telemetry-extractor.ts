@@ -4,13 +4,16 @@ import { BrowserContext, Page, Request, Response } from 'playwright';
 import {
   ApiContractEndpoint,
   ApiContractsReport,
+  CapturedDownloadResource,
+  CausalNetworkTrigger,
   ExecutionSequenceReport,
   PopupEvent,
   RouteTrackerRecord,
   SelectorCandidate,
   SelectorMapEntry,
   SelectorsMapReport,
-  UserActionRecord
+  UserActionRecord,
+  WebSocketEventRecord
 } from '../types';
 
 /**
@@ -21,6 +24,9 @@ import {
  * 2. Mapa de Selectores (selectors-map.json): Evaluación de robustez, resiliencia y recomendación de Locators de Playwright.
  * 3. Contratos de API (api-contracts.json): Interceptación pasiva de endpoints XHR/Fetch con esquemas inferidos y payloads.
  * 4. Rastreo de Rutas Directas (Route Tracker): Detección de navegación SPA por URL directa para evitar clics en menús anidados.
+ * 5. Causal Linker: Vinculación causal entre acciones de usuario y peticiones de red disparadas en su ventana de reacción.
+ * 6. Download & Stream Sniffer: Detección de descargas binarias, blobs y archivos generados.
+ * 7. GraphQL Disaggregator & WebSocket Inspector: Desagregación por operationName y captura de frames WS.
  */
 export class TelemetryExtractor {
   private actions: UserActionRecord[] = [];
@@ -31,6 +37,9 @@ export class TelemetryExtractor {
   private routesMap: Map<string, RouteTrackerRecord> = new Map();
   private requestStartTimes: Map<string, number> = new Map();
   private popupsDetected: PopupEvent[] = [];
+  private downloadsCaptured: CapturedDownloadResource[] = [];
+  private webSocketsMap: Map<string, WebSocketEventRecord> = new Map();
+  private activeCausalTriggers: Map<string, { action: UserActionRecord; trigger: CausalNetworkTrigger }> = new Map();
   private attachedPages = new WeakSet<Page>();
   private static readonly TELEMETRY_PREFIX = '__SK_TELEMETRY__:';
 
@@ -55,6 +64,79 @@ export class TelemetryExtractor {
     // Escuchar si la página actual dispara un popup
     page.on('popup', async (popup) => {
       await this.handlePopupInstance(popup, page, _context);
+    });
+
+    // Escuchar descargas directas de archivos del navegador
+    page.on('download', async (download) => {
+      try {
+        const filename = download.suggestedFilename() || 'downloaded_file';
+        const url = download.url();
+        const dlResource: CapturedDownloadResource = {
+          id: `dl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          sourceType: 'browser_download',
+          url,
+          suggestedFilename: filename,
+          directDownloadSnippet: `const [download] = await Promise.all([\n  page.waitForEvent('download'),\n  /* locator.click() */\n]);\nawait download.saveAs('./${filename}');`
+        };
+        this.downloadsCaptured.push(dlResource);
+
+        if (this.actions.length > 0) {
+          const lastAction = this.actions[this.actions.length - 1];
+          if (!lastAction.triggeredRequests) lastAction.triggeredRequests = [];
+          lastAction.triggeredRequests.push({
+            method: 'GET',
+            url,
+            resourceType: 'download',
+            isDownloadOrBinary: true
+          });
+        }
+      } catch {}
+    });
+
+    // Escuchar canales y frames de WebSockets
+    page.on('websocket', (ws) => {
+      try {
+        const wsUrl = ws.url();
+        let wsRecord = this.webSocketsMap.get(wsUrl);
+        if (!wsRecord) {
+          wsRecord = {
+            url: wsUrl,
+            connectedAt: new Date().toISOString(),
+            framesCount: 0,
+            sampleFrames: []
+          };
+          this.webSocketsMap.set(wsUrl, wsRecord);
+        }
+
+        ws.on('framereceived', (event) => {
+          if (!wsRecord) return;
+          wsRecord.framesCount++;
+          const payload = typeof event.payload === 'string' ? event.payload : '[binary frame]';
+          const isReportNotification = /(report|progress|ready|status|done|finished|download|ticket)/i.test(payload);
+          if (wsRecord.sampleFrames.length < 15) {
+            wsRecord.sampleFrames.push({
+              direction: 'received',
+              timestamp: new Date().toISOString(),
+              payload: payload.slice(0, 300),
+              isReportNotification
+            });
+          }
+        });
+
+        ws.on('framesent', (event) => {
+          if (!wsRecord) return;
+          wsRecord.framesCount++;
+          const payload = typeof event.payload === 'string' ? event.payload : '[binary frame]';
+          if (wsRecord.sampleFrames.length < 15) {
+            wsRecord.sampleFrames.push({
+              direction: 'sent',
+              timestamp: new Date().toISOString(),
+              payload: payload.slice(0, 300)
+            });
+          }
+        });
+      } catch {}
     });
 
     if (_context) {
@@ -421,6 +503,28 @@ export class TelemetryExtractor {
             domSnapshot
           });
         });
+
+        // Interceptor pasivo de blobs y descargas generadas en cliente (URL.createObjectURL)
+        try {
+          if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+            const origCreate = URL.createObjectURL;
+            URL.createObjectURL = function (blob: any) {
+              const resUrl = origCreate.apply(this, arguments as any);
+              try {
+                if (blob && typeof blob === 'object') {
+                  emitTelemetry({
+                    actionType: 'blob_created',
+                    blobUrl: resUrl,
+                    blobType: blob.type || 'application/octet-stream',
+                    blobSize: blob.size || 0,
+                    timestamp: new Date().toISOString()
+                  });
+                }
+              } catch {}
+              return resUrl;
+            };
+          }
+        } catch {}
       },
       { prefix: TelemetryExtractor.TELEMETRY_PREFIX, snapshotsEnabled: this.domSnapshotsEnabled }
     );
@@ -536,6 +640,32 @@ export class TelemetryExtractor {
     try {
       const data = JSON.parse(rawJson);
       const actionType = data.actionType;
+
+      // Interceptar creación de blobs / descargas generadas en cliente
+      if (actionType === 'blob_created') {
+        const downloadRes: CapturedDownloadResource = {
+          id: `blob_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: data.timestamp || new Date().toISOString(),
+          sourceType: 'blob_url',
+          url: data.blobUrl,
+          mimeType: data.blobType,
+          byteSize: data.blobSize,
+          directDownloadSnippet: `// Blob generado en cliente: ${data.blobType} (${data.blobSize} bytes)\nconst buffer = await page.evaluate(async (url) => (await fetch(url)).arrayBuffer(), '${data.blobUrl}');`
+        };
+        this.downloadsCaptured.push(downloadRes);
+        if (this.actions.length > 0) {
+          const last = this.actions[this.actions.length - 1];
+          if (!last.triggeredRequests) last.triggeredRequests = [];
+          last.triggeredRequests.push({
+            method: 'BLOB_CREATE',
+            url: data.blobUrl,
+            resourceType: 'blob',
+            isDownloadOrBinary: true
+          });
+        }
+        return;
+      }
+
       const url = data.url;
       const target = data.target;
 
@@ -781,35 +911,148 @@ export class TelemetryExtractor {
   }
 
   /**
-   * Registra el inicio de una petición HTTP para medir latencia precisa de backend.
+   * Registra el inicio de una petición HTTP para medir latencia precisa de backend
+   * y correlaciona causalmente la petición con la última acción del usuario (ventana de 3500ms).
    */
   private handleRequest(request: Request): void {
     const resourceType = request.resourceType();
-    if (resourceType === 'xhr' || resourceType === 'fetch') {
-      this.requestStartTimes.set(request.url(), Date.now());
+    const url = request.url();
+
+    // Auditar tanto XHR/Fetch como peticiones de navegación y descargas
+    if (resourceType === 'xhr' || resourceType === 'fetch' || resourceType === 'document' || resourceType === 'other') {
+      this.requestStartTimes.set(url, Date.now());
+
+      if (this.actions.length > 0) {
+        const lastAction = this.actions[this.actions.length - 1];
+        const actionTime = new Date(lastAction.timestamp).getTime();
+        if (Date.now() - actionTime <= 3500) {
+          const trigger: CausalNetworkTrigger = {
+            method: request.method().toUpperCase(),
+            url,
+            resourceType
+          };
+          if (!lastAction.triggeredRequests) {
+            lastAction.triggeredRequests = [];
+          }
+          lastAction.triggeredRequests.push(trigger);
+          this.activeCausalTriggers.set(url, { action: lastAction, trigger });
+        }
+      }
     }
   }
 
   /**
-   * Intercepta la respuesta XHR/Fetch y extrae el contrato de API con payloads y esquemas.
+   * Intercepta la respuesta XHR/Fetch y descargas binarias, extrayendo contratos de API,
+   * desagregando GraphQL por operationName y actualizando la vinculación causal con acciones.
    */
   private async handleResponse(response: Response): Promise<void> {
     const request = response.request();
     const resourceType = request.resourceType();
-
-    // Solo auditar APIs REST, XHR y Fetch
-    if (resourceType !== 'xhr' && resourceType !== 'fetch') return;
-
     const urlString = response.url();
     const method = request.method().toUpperCase();
+    const startTime = this.requestStartTimes.get(urlString);
+    const latency = startTime ? Date.now() - startTime : 0;
+    this.requestStartTimes.delete(urlString);
+
+    const rawResHeaders = response.headers();
+    const contentType = (rawResHeaders['content-type'] || '').toLowerCase();
+    const contentDisposition = (rawResHeaders['content-disposition'] || '').toLowerCase();
+
+    const isBinaryOrAttachment =
+      contentDisposition.includes('attachment') ||
+      contentType.includes('application/pdf') ||
+      contentType.includes('spreadsheet') ||
+      contentType.includes('excel') ||
+      contentType.includes('application/zip') ||
+      contentType.includes('application/octet-stream') ||
+      contentType.includes('application/vnd.ms-excel') ||
+      contentType.includes('application/vnd.openxmlformats-officedocument');
+
+    // Actualizar vinculación causal si esta petición provino de una acción reciente
+    const causal = this.activeCausalTriggers.get(urlString);
+    if (causal) {
+      causal.trigger.status = response.status();
+      causal.trigger.latencyMs = latency;
+      if (isBinaryOrAttachment) {
+        causal.trigger.isDownloadOrBinary = true;
+      }
+      this.activeCausalTriggers.delete(urlString);
+    }
+
+    // Si es un archivo binario o descarga servida por API
+    if (isBinaryOrAttachment) {
+      let suggestedFilename: string | undefined;
+      const matchName = /filename\*?=['"]?(?:UTF-\d['"]*)?([^;\r\n"']+)['"]?/i.exec(contentDisposition);
+      if (matchName && matchName[1]) {
+        suggestedFilename = decodeURIComponent(matchName[1].trim());
+      } else {
+        try {
+          const pathSegments = new URL(urlString).pathname.split('/');
+          const lastSeg = pathSegments[pathSegments.length - 1];
+          if (lastSeg && lastSeg.includes('.')) {
+            suggestedFilename = lastSeg;
+          }
+        } catch {}
+      }
+
+      const dlResource: CapturedDownloadResource = {
+        id: `dl_resp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        sourceType: 'binary_response',
+        url: urlString,
+        mimeType: contentType,
+        suggestedFilename: suggestedFilename || 'download_asset',
+        associatedActionId: causal?.action.id,
+        directDownloadSnippet: `// Descarga binaria directa sin UI\nconst resp = await page.request.get('${urlString}');\nconst buffer = await resp.body();`
+      };
+      this.downloadsCaptured.push(dlResource);
+    }
+
+    // Solo auditar contratos de APIs REST, GraphQL, XHR y Fetch
+    if (resourceType !== 'xhr' && resourceType !== 'fetch') return;
 
     try {
       const parsedUrl = new URL(urlString);
-      const endpointKey = `${method} ${parsedUrl.origin}${parsedUrl.pathname}`;
+      const postData = request.postData();
 
-      const startTime = this.requestStartTimes.get(urlString);
-      const latency = startTime ? Date.now() - startTime : 0;
-      this.requestStartTimes.delete(urlString);
+      // GraphQL Disaggregation: detectar operationName para no agrupar todo en un único POST /graphql
+      let graphqlOperationName: string | undefined;
+      let graphqlOperationType: 'query' | 'mutation' | 'subscription' | undefined;
+
+      const isGraphqlPath = parsedUrl.pathname.toLowerCase().includes('graphql');
+      let parsedPostJson: any = null;
+      if (postData) {
+        try {
+          parsedPostJson = JSON.parse(postData);
+        } catch {}
+      }
+
+      if (isGraphqlPath || (parsedPostJson && (parsedPostJson.query || parsedPostJson.operationName))) {
+        if (parsedPostJson?.operationName) {
+          graphqlOperationName = parsedPostJson.operationName;
+        }
+        const queryText = parsedPostJson?.query || (typeof postData === 'string' ? postData : '');
+        if (!graphqlOperationName && queryText) {
+          const matchOp = /(?:query|mutation|subscription)\s+([a-zA-Z0-9_]+)/i.exec(queryText);
+          if (matchOp && matchOp[1]) {
+            graphqlOperationName = matchOp[1];
+          }
+        }
+
+        if (queryText) {
+          if (/^\s*mutation\b/i.test(queryText) || /\bmutation\s+[a-zA-Z0-9_]+/i.test(queryText)) {
+            graphqlOperationType = 'mutation';
+          } else if (/^\s*subscription\b/i.test(queryText) || /\bsubscription\s+[a-zA-Z0-9_]+/i.test(queryText)) {
+            graphqlOperationType = 'subscription';
+          } else {
+            graphqlOperationType = 'query';
+          }
+        }
+      }
+
+      const endpointKey = graphqlOperationName
+        ? `${method} ${parsedUrl.origin}${parsedUrl.pathname} [${graphqlOperationName}]`
+        : `${method} ${parsedUrl.origin}${parsedUrl.pathname}`;
 
       // Query params
       const queryParams: Record<string, string> = {};
@@ -830,13 +1073,11 @@ export class TelemetryExtractor {
       // Payload de petición
       let requestPayloadSample: unknown = undefined;
       let requestSchema: Record<string, string> | undefined = undefined;
-      const postData = request.postData();
       if (postData) {
-        try {
-          const parsedPost = JSON.parse(postData);
-          requestPayloadSample = this.truncateObject(parsedPost);
-          requestSchema = this.inferObjectSchema(parsedPost);
-        } catch {
+        if (parsedPostJson) {
+          requestPayloadSample = this.truncateObject(parsedPostJson);
+          requestSchema = this.inferObjectSchema(parsedPostJson);
+        } else {
           requestPayloadSample = postData.length > 200 ? `${postData.slice(0, 200)}...` : postData;
         }
       }
@@ -858,7 +1099,6 @@ export class TelemetryExtractor {
       } catch {}
 
       // Headers de respuesta sanitizados
-      const rawResHeaders = response.headers();
       const responseHeaders: Record<string, string> = {};
       if (rawResHeaders['content-type']) responseHeaders['content-type'] = rawResHeaders['content-type'];
       if (rawResHeaders['cache-control']) responseHeaders['cache-control'] = rawResHeaders['cache-control'];
@@ -871,6 +1111,8 @@ export class TelemetryExtractor {
           url: urlString,
           pathname: parsedUrl.pathname,
           origin: parsedUrl.origin,
+          graphqlOperationName,
+          graphqlOperationType,
           queryParams,
           requestHeaders,
           requestPayloadSample,
@@ -886,6 +1128,10 @@ export class TelemetryExtractor {
       } else {
         contract.callCount++;
         contract.averageLatencyMs = Math.round((contract.averageLatencyMs * (contract.callCount - 1) + latency) / contract.callCount);
+        if (graphqlOperationName && !contract.graphqlOperationName) {
+          contract.graphqlOperationName = graphqlOperationName;
+          contract.graphqlOperationType = graphqlOperationType;
+        }
         if (!contract.responsePayloadSample && responsePayloadSample) {
           contract.responsePayloadSample = responsePayloadSample;
           contract.responseSchema = responseSchema;
@@ -1007,6 +1253,7 @@ export class TelemetryExtractor {
       totalDomSnapshotsSaved: totalSnapshotsSaved,
       uniqueRoutesDiscovered: this.routesMap.size,
       popupsDetected: this.popupsDetected,
+      downloadsCaptured: this.downloadsCaptured,
       actions: this.actions,
       routeDirectNavigations: Array.from(this.routesMap.values())
     };
@@ -1062,7 +1309,8 @@ export class TelemetryExtractor {
     const report: ApiContractsReport = {
       generatedAt: new Date().toISOString(),
       totalContractsDiscovered: this.apiContractsMap.size,
-      contracts: Array.from(this.apiContractsMap.values())
+      contracts: Array.from(this.apiContractsMap.values()),
+      webSocketsObserved: Array.from(this.webSocketsMap.values())
     };
 
     if (outputPath) {

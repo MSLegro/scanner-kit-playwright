@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ScannerKit } from '../scanner-kit';
 import { SessionRefresher } from '../modules/session-refresher';
+import { StaticSurfaceMiner } from '../modules/static-surface-miner';
 import { TestServer } from './test-server';
 
 /**
@@ -51,9 +52,25 @@ async function runVerification() {
     await scanner.page.locator('#search-query').fill('Facturas Q1');
     await scanner.page.keyboard.press('Tab');
 
+    console.log('  -> Simulando login en API (Token Lineage)...');
+    await scanner.page.locator('#btn-auth-login').click();
+    await scanner.page.waitForTimeout(400);
+
     console.log('  -> Simulando clic en botón de acción (Fetch Invoices XHR)...');
     await scanner.page.locator('#btn-fetch-invoices').click();
     await scanner.page.waitForTimeout(500);
+
+    console.log('  -> Simulando consulta GraphQL (GraphQL Disaggregation)...');
+    await scanner.page.locator('#btn-fetch-graphql').click();
+    await scanner.page.waitForTimeout(400);
+
+    console.log('  -> Simulando descarga de reporte PDF (Binary Download Sniffer)...');
+    await scanner.page.locator('#btn-download-pdf').click();
+    await scanner.page.waitForTimeout(400);
+
+    console.log('  -> Simulando envío de formulario JSF con ViewState (Legacy Server State)...');
+    await scanner.page.locator('#btn-submit-jsf').click();
+    await scanner.page.waitForTimeout(400);
 
     console.log('  -> Simulando apertura de ventana emergente (Popup)...');
     const [popup] = await Promise.all([
@@ -67,6 +84,12 @@ async function runVerification() {
     console.log('  -> Simulando cambio de ruta SPA (#/contabilidad/reportes)...');
     await scanner.page.evaluate(() => {
       window.location.hash = '#/contabilidad/reportes?year=2026';
+    });
+    await scanner.page.waitForTimeout(300);
+
+    console.log('  -> Simulando descarga pasiva de plantilla Stimulsoft (.mrt)...');
+    await scanner.page.evaluate(async () => {
+      await fetch('/reports/invoice-template.mrt').catch(() => null);
     });
     await scanner.page.waitForTimeout(300);
 
@@ -92,7 +115,8 @@ async function runVerification() {
       'form-schema.json',
       'prompt-context.md',
       'accessibility-tree.json',
-      'brand-identity.json'
+      'brand-identity.json',
+      'discovered-api-surface.json'
     ];
 
     for (const f of expectedFiles) {
@@ -116,6 +140,33 @@ async function runVerification() {
       console.log(`  ✓ RouteTracker detectó ruta directa: "${seqData.routeDirectNavigations[0].route}"`);
       console.log(`    Sugerencia generada: ${seqData.routeDirectNavigations[0].recommendedGoto}`);
     }
+
+    // Validar Causal Network Triggers en execution-sequence.json
+    const invoiceClick = seqData.actions.find((a: any) => a.target?.id === 'btn-fetch-invoices');
+    if (!invoiceClick || !invoiceClick.triggeredRequests || invoiceClick.triggeredRequests.length === 0) {
+      throw new Error('[FAIL] Action-to-Network Causal Linker no asoció peticiones a btn-fetch-invoices');
+    }
+    const hasInvoiceReq = invoiceClick.triggeredRequests.some((t: any) => t.url.includes('/api/v1/invoices'));
+    if (!hasInvoiceReq) {
+      throw new Error('[FAIL] Causal Linker no vinculó /api/v1/invoices a la acción de clic');
+    }
+    console.log(`  ✓ Action-to-Network Causal Linker verificado: ${invoiceClick.triggeredRequests.length} peticion(es) vinculadas al clic de btn-fetch-invoices`);
+
+    // Validar Downloads & Binary Sniffer en execution-sequence.json y carpeta downloads/
+    if (!seqData.downloadsCaptured || seqData.downloadsCaptured.length === 0) {
+      throw new Error('[FAIL] Download & Binary Sniffer no capturó descargas en execution-sequence.json');
+    }
+    const pdfDl = seqData.downloadsCaptured.find((d: any) => d.suggestedFilename?.includes('factura_enero_2026.pdf') || d.mimeType?.includes('pdf'));
+    if (!pdfDl) {
+      throw new Error('[FAIL] Download Sniffer no detectó la descarga del PDF');
+    }
+    console.log(`  ✓ Download & Binary Sniffer verificado: ${pdfDl.suggestedFilename} (${pdfDl.mimeType})`);
+
+    const downloadsManifest = path.join(artifacts.outputDirectory, 'downloads', 'downloads-manifest.json');
+    if (!fs.existsSync(downloadsManifest)) {
+      throw new Error('[FAIL] No se generó downloads/downloads-manifest.json en el blueprint');
+    }
+    console.log(`  ✓ Manifiesto de descargas verificado en disco: ${downloadsManifest}`);
 
     // Validar contenido de form-schema.json
     const formData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'form-schema.json'), 'utf-8'));
@@ -216,12 +267,88 @@ async function runVerification() {
     console.log(`  ✓ selectors-map.json: ${selData.totalSelectorsAnalyzed} selectores analizados`);
     console.log(`    Distribución de robustez:`, selData.robustnessSummary);
 
-    // Validar contenido de api-contracts.json
+    // Validar contenido de api-contracts.json y GraphQL Disaggregation
     const apiData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'api-contracts.json'), 'utf-8'));
     console.log(`  ✓ api-contracts.json: ${apiData.totalContractsDiscovered} contratos descubiertos`);
-    if (apiData.contracts.length > 0) {
-      console.log(`    Endpoint interceptado: ${apiData.contracts[0].method} ${apiData.contracts[0].pathname}`);
+    const gqlContract = apiData.contracts.find((c: any) => c.graphqlOperationName === 'GetFinancialSummary');
+    if (!gqlContract) {
+      throw new Error('[FAIL] GraphQL Disaggregator no desagregó el endpoint /api/graphql por operationName');
     }
+    console.log(`  ✓ GraphQL Disaggregator verificado: "${gqlContract.endpointKey}" (Operación: ${gqlContract.graphqlOperationName}, Tipo: ${gqlContract.graphqlOperationType})`);
+
+    // Validar recon-report.json: Token Provenance y Legacy Server State
+    const reconData = JSON.parse(fs.readFileSync(path.join(artifacts.outputDirectory, 'recon-report.json'), 'utf-8'));
+    const bearerTok = reconData.securityTokens.find((t: any) => t.type === 'Bearer');
+    if (!bearerTok || !bearerTok.provenance) {
+      throw new Error('[FAIL] Token Provenance Tracker no pobló provenance para el token Bearer');
+    }
+    console.log(`  ✓ Token Provenance verificado: ${bearerTok.headerName} provino de ${bearerTok.provenance.sourceLocation} (${bearerTok.provenance.sourceType})`);
+
+    if (!reconData.legacyServerState || reconData.legacyServerState.stateFields.length === 0) {
+      throw new Error('[FAIL] Legacy Server State Analyzer no detectó javax.faces.ViewState');
+    }
+    const viewStateField = reconData.legacyServerState.stateFields.find((f: any) => f.fieldName === 'javax.faces.ViewState');
+    if (!viewStateField || !viewStateField.domExtractionRegex) {
+      throw new Error('[FAIL] Campo javax.faces.ViewState no posee domExtractionRegex en recon-report.json');
+    }
+    console.log(`  ✓ Legacy Server State verificado: Framework="${reconData.legacyServerState.frameworkDetected}", Campo="${viewStateField.fieldName}", Regex="${viewStateField.domExtractionRegex}"`);
+
+    // Validar contenido de discovered-api-surface.json
+    console.log('\n  -> Validando descubrimiento estático de superficie de APIs (discovered-api-surface.json)...');
+    const surfaceData = JSON.parse(
+      fs.readFileSync(path.join(artifacts.outputDirectory, 'discovered-api-surface.json'), 'utf-8')
+    );
+    console.log(`  ✓ discovered-api-surface.json: ${surfaceData.summary.totalEndpointsDiscovered} endpoints descubiertos en ${surfaceData.summary.totalScriptsAnalyzed} script(s)`);
+
+    // Validar satélite multi-puerto 5004
+    const sat5004 = surfaceData.satelliteServices.find((s: any) => s.port === '5004' || s.origin.includes('5004'));
+    if (!sat5004) {
+      throw new Error('[FAIL] StaticSurfaceMiner no detectó el servicio satélite en puerto 5004');
+    }
+    console.log(`  ✓ Servicio satélite detectado: ${sat5004.origin} (Rol: "${sat5004.inferredRole}")`);
+
+    // Validar clasificación de alto valor
+    const hasPdf = surfaceData.highValueEndpoints.some((e: any) => e.category === 'PDF_COMPILATION');
+    const hasExport = surfaceData.highValueEndpoints.some((e: any) => e.category === 'EXPORT');
+    const hasDocs = surfaceData.highValueEndpoints.some((e: any) => e.category === 'DOCUMENTS');
+    if (!hasPdf || !hasExport || !hasDocs) {
+      throw new Error('[FAIL] StaticSurfaceMiner no catalogó endpoints en PDF_COMPILATION, EXPORT o DOCUMENTS');
+    }
+    console.log(`  ✓ Clasificación de alto valor verificada: PDF_COMPILATION, EXPORT y DOCUMENTS presentes`);
+
+    // Validar distinción entre ejecutado en vivo vs latente en código
+    const liveEndpoint = surfaceData.highValueEndpoints.find((e: any) => e.endpoint.includes('/api/v1/invoices'));
+    const latentEndpoint = surfaceData.highValueEndpoints.find((e: any) => e.endpoint.includes('/api/v1/reports/pdf/render'));
+    if (!liveEndpoint || !liveEndpoint.executedInLiveSession) {
+      throw new Error('[FAIL] /api/v1/invoices debió ser marcado como ejecutado en vivo (executedInLiveSession: true)');
+    }
+    if (!latentEndpoint || latentEndpoint.executedInLiveSession) {
+      throw new Error('[FAIL] /api/v1/reports/pdf/render debió ser marcado como latente en código (executedInLiveSession: false)');
+    }
+    console.log(`  ✓ Cruce de endpoints ejecutados vs latentes validado con éxito`);
+
+    // Validar plantilla Stimulsoft (.mrt) y DataSources
+    const tplMrt = surfaceData.reportTemplates.find((t: any) => t.templateName.includes('invoice-template.mrt'));
+    if (!tplMrt || tplMrt.format !== 'mrt') {
+      throw new Error('[FAIL] No se parseó la plantilla Stimulsoft invoice-template.mrt');
+    }
+    const invoicesDs = tplMrt.dataSources.find((ds: any) => ds.name === 'Invoices');
+    if (!invoicesDs || invoicesDs.columns.length < 4) {
+      throw new Error('[FAIL] DataSource Invoices no fue extraído con sus columnas en la plantilla .mrt');
+    }
+    if (!tplMrt.correlatedEndpoints.some((e: any) => e.includes('/api/v1/invoices'))) {
+      throw new Error('[FAIL] La plantilla .mrt no fue correlacionada con el endpoint /api/v1/invoices');
+    }
+    console.log(`  ✓ Plantilla Stimulsoft .mrt verificada: DataSource "${invoicesDs.name}" (${invoicesDs.columns.join(', ')}) correlacionada con ${tplMrt.correlatedEndpoints.join(', ')}`);
+
+    // Validar sección en prompt-context.md
+    if (!promptContext.includes('Oportunidades de Bypass API-First Detectadas')) {
+      throw new Error('[FAIL] prompt-context.md no incluye la sección de Oportunidades de Bypass API-First Detectadas');
+    }
+    if (!promptContext.includes('5004') || !promptContext.includes('PDF_COMPILATION')) {
+      throw new Error('[FAIL] prompt-context.md no incluye los detalles de satélites o categorías de alto impacto');
+    }
+    console.log(`  ✓ prompt-context.md incluye sección de Bypass API-First con satélites y plantillas`);
 
     // -----------------------------------------------------------------
     // TEST 3: SessionRefresher Anti-401 (Silent Re-login & Auto-Retry)
@@ -277,6 +404,59 @@ async function runVerification() {
     console.log('  ✓ SessionRefresher Anti-401 verificado al 100%');
 
     apiServer.close();
+
+    // -----------------------------------------------------------------
+    // TEST 4: StaticSurfaceMiner Unit Test (sample-bundle.js & template)
+    // -----------------------------------------------------------------
+    console.log('\n--- [TEST 4] StaticSurfaceMiner: Bundle Harvester & Template Parsing Unit Test ---');
+    const unitMiner = new StaticSurfaceMiner();
+    unitMiner.registerScript(
+      'sample-bundle.js',
+      `
+      const routes = {
+        invoices: '/api/v1/invoices',
+        renderPdf: '/api/v1/reports/pdf/render',
+        excelExport: '/api/v1/export/excel',
+        attachments: '/documents/download/attachment',
+        satelliteService: 'http://172.16.1.99:5004/api/reporting/generate-pdf'
+      };
+      console.log(routes);
+    `
+    );
+    unitMiner.registerTemplate(
+      'sample-invoice.mrt',
+      JSON.stringify({
+        Dictionary: {
+          DataSources: [
+            {
+              Name: 'Invoices',
+              Columns: [{ Name: 'id' }, { Name: 'total' }]
+            }
+          ]
+        }
+      })
+    );
+    const unitReport = unitMiner.mineDiscoveredSurface('http://localhost:3000', ['/api/v1/invoices']);
+    if (!unitReport) {
+      throw new Error('[FAIL] StaticSurfaceMiner unit test: no retornó reporte');
+    }
+    if (unitReport.satelliteServices.length === 0 || unitReport.satelliteServices[0].port !== '5004') {
+      throw new Error('[FAIL] StaticSurfaceMiner unit test: no detectó el puerto satélite 5004');
+    }
+    if (!unitReport.highValueEndpoints.some((e) => e.category === 'PDF_COMPILATION')) {
+      throw new Error('[FAIL] StaticSurfaceMiner unit test: no clasificó PDF_COMPILATION');
+    }
+    if (!unitReport.highValueEndpoints.some((e) => e.category === 'EXPORT')) {
+      throw new Error('[FAIL] StaticSurfaceMiner unit test: no clasificó EXPORT');
+    }
+    if (!unitReport.highValueEndpoints.some((e) => e.category === 'DOCUMENTS')) {
+      throw new Error('[FAIL] StaticSurfaceMiner unit test: no clasificó DOCUMENTS');
+    }
+    const unitTpl = unitReport.reportTemplates.find((t) => t.templateName === 'sample-invoice.mrt');
+    if (!unitTpl || !unitTpl.correlatedEndpoints.some((e) => e.includes('/api/v1/invoices'))) {
+      throw new Error('[FAIL] StaticSurfaceMiner unit test: no correlacionó DataSource Invoices con /api/v1/invoices');
+    }
+    console.log('  ✓ StaticSurfaceMiner unit test completado exitosamente sobre sample-bundle.js');
   } finally {
     await server.stop();
     // Limpieza de carpeta temporal de prueba

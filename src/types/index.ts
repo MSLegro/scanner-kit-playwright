@@ -105,6 +105,13 @@ export interface ScannerKitOptions {
    * Por defecto: true.
    */
   domSnapshotsMode?: boolean;
+
+  /**
+   * Activar minero estático pasivo de superficie de APIs, bundles JS y esquemas de reportes.
+   * Descubre endpoints latentes, servicios satélites y plantillas para bypass directo sin UI.
+   * Por defecto: true.
+   */
+  staticSurfaceMining?: boolean;
 }
 
 /**
@@ -170,6 +177,16 @@ export interface ExportArtifactsResult {
    * Directorio donde se almacenaron las instantáneas completas del DOM por acción (dom-snapshots/).
    */
   domSnapshotsDir?: string;
+
+  /**
+   * Ruta al catálogo de superficie de APIs y servicios satélites descubiertos (discovered-api-surface.json).
+   */
+  discoveredApiSurfaceFile?: string;
+
+  /**
+   * Directorio donde se descargaron los archivos binarios y reportes capturados (downloads/).
+   */
+  downloadsDir?: string;
 }
 
 /**
@@ -306,6 +323,17 @@ export interface DiscoveredEndpoint {
 }
 
 /**
+ * Origen rastreado de dónde fue emitido o recibido un token de seguridad.
+ */
+export interface TokenProvenance {
+  sourceType: 'response_body' | 'response_header' | 'storage' | 'cookie' | 'initial_handshake';
+  sourceLocation: string;
+  fieldPath?: string;
+  observedAt: string;
+  description: string;
+}
+
+/**
  * Token o credencial de seguridad identificada en el tráfico de red.
  */
 export interface DetectedSecurityToken {
@@ -313,6 +341,29 @@ export interface DetectedSecurityToken {
   type: 'Bearer' | 'Basic' | 'CSRF' | 'API-Key' | 'Custom-Auth';
   sampleValue: string;
   observedInEndpoints: string[];
+  provenance?: TokenProvenance;
+}
+
+/**
+ * Campo de estado de servidor legacy (JSF ViewState, ASP.NET __VIEWSTATE, PrimeFaces).
+ */
+export interface LegacyServerStateField {
+  framework: 'JSF' | 'ASP_NET' | 'PRIMEFACES' | 'CSRF_FORM' | 'GENERIC_STATE';
+  fieldName: string;
+  sampleValue: string;
+  sourceFormId?: string;
+  domExtractionRegex: string;
+  observedInEndpoints: string[];
+}
+
+/**
+ * Diagnóstico de estado del servidor en portales legacy.
+ */
+export interface LegacyServerStateReport {
+  frameworkDetected?: string;
+  requiresStatefulPost: boolean;
+  stateFields: LegacyServerStateField[];
+  hybridBypassRecipe?: string;
 }
 
 /**
@@ -352,9 +403,39 @@ export interface ReconReport {
       rpaStrategy: string;
     }>;
   };
+  legacyServerState?: LegacyServerStateReport;
   securityTokens: DetectedSecurityToken[];
   endpoints: DiscoveredEndpoint[];
   domainsContacted: string[];
+}
+
+/**
+ * Petición de red disparada causalmente tras una acción de usuario en la interfaz.
+ */
+export interface CausalNetworkTrigger {
+  method: string;
+  url: string;
+  status?: number;
+  resourceType: string;
+  latencyMs?: number;
+  isDownloadOrBinary?: boolean;
+}
+
+/**
+ * Recurso o descarga binaria interceptada (PDF, Excel, Zip, Blob, Base64).
+ */
+export interface CapturedDownloadResource {
+  id: string;
+  timestamp: string;
+  sourceType: 'browser_download' | 'binary_response' | 'blob_url' | 'base64_embedded';
+  url: string;
+  suggestedFilename?: string;
+  mimeType?: string;
+  byteSize?: number;
+  magicHeader?: string;
+  associatedActionId?: string;
+  directDownloadSnippet: string;
+  localPath?: string;
 }
 
 /**
@@ -390,6 +471,10 @@ export interface UserActionRecord {
     reason: string;
   };
   /**
+   * Peticiones HTTP XHR/Fetch/Descargas disparadas causalmente en la ventana de reacción tras esta acción.
+   */
+  triggeredRequests?: CausalNetworkTrigger[];
+  /**
    * Ruta relativa al archivo HTML con el snapshot completo del DOM en el momento de la acción.
    * Ejemplo: "dom-snapshots/step-001-click-btn-fetch-invoices.html"
    */
@@ -409,6 +494,7 @@ export interface ExecutionSequenceReport {
   totalDomSnapshotsSaved?: number;
   uniqueRoutesDiscovered: number;
   popupsDetected?: PopupEvent[];
+  downloadsCaptured?: CapturedDownloadResource[];
   actions: UserActionRecord[];
   routeDirectNavigations: RouteTrackerRecord[];
 }
@@ -472,6 +558,23 @@ export interface ApiContractEndpoint {
   responseSchema?: Record<string, string>;
   averageLatencyMs: number;
   callCount: number;
+  graphqlOperationName?: string;
+  graphqlOperationType?: 'query' | 'mutation' | 'subscription';
+}
+
+/**
+ * Evento o canal WebSocket interceptado durante la auditoría.
+ */
+export interface WebSocketEventRecord {
+  url: string;
+  connectedAt: string;
+  framesCount: number;
+  sampleFrames: Array<{
+    direction: 'sent' | 'received';
+    timestamp: string;
+    payload: string;
+    isReportNotification?: boolean;
+  }>;
 }
 
 /**
@@ -481,6 +584,7 @@ export interface ApiContractsReport {
   generatedAt: string;
   totalContractsDiscovered: number;
   contracts: ApiContractEndpoint[];
+  webSocketsObserved?: WebSocketEventRecord[];
 }
 
 /**
@@ -692,5 +796,67 @@ export interface BrandIdentityReport {
   resources: BrandGraphicResource[];
   totalResources: number;
 }
+
+/**
+ * Categorías de endpoints de alto impacto descubiertos en el código cliente.
+ */
+export type HighValueCategory = 'PDF_COMPILATION' | 'EXPORT' | 'DOCUMENTS' | 'OTHER';
+
+/**
+ * Servicio satélite o host/puerto alternativo descubierto en los bundles frontend.
+ */
+export interface SatelliteService {
+  origin: string;
+  host: string;
+  port?: string;
+  inferredRole: string;
+  sampleEndpoints: string[];
+}
+
+/**
+ * Endpoint de alto valor descubierto estáticamente en los scripts del frontend.
+ */
+export interface HighValueEndpoint {
+  endpoint: string;
+  category: HighValueCategory;
+  source: string;
+  executedInLiveSession: boolean;
+  matchedTemplates?: string[];
+  suggestedBypass: string;
+}
+
+/**
+ * Definición y esquema de datos de una plantilla de reporte descubierta.
+ */
+export interface ReportTemplateDefinition {
+  templateName: string;
+  format: 'mrt' | 'repx' | 'jasper' | 'xml' | 'json' | 'unknown';
+  url?: string;
+  dataSources: Array<{
+    name: string;
+    columns: string[];
+    query?: string;
+  }>;
+  correlatedEndpoints: string[];
+  rawSnippet?: string;
+}
+
+/**
+ * Catálogo consolidado de superficie de APIs, servicios satélites y plantillas de reportes (discovered-api-surface.json).
+ */
+export interface DiscoveredApiSurfaceReport {
+  generatedAt: string;
+  summary: {
+    totalScriptsAnalyzed: number;
+    totalEndpointsDiscovered: number;
+    totalHighValueEndpoints: number;
+    totalSatellitesFound: number;
+    totalReportTemplatesFound: number;
+  };
+  satelliteServices: SatelliteService[];
+  highValueEndpoints: HighValueEndpoint[];
+  reportTemplates: ReportTemplateDefinition[];
+}
+
 
 

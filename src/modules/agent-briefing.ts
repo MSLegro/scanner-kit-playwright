@@ -3,6 +3,7 @@ import * as path from 'path';
 import {
   ApiContractsReport,
   BrandIdentityReport,
+  DiscoveredApiSurfaceReport,
   ExecutionSequenceReport,
   FormSchemaReport,
   ReconReport,
@@ -21,6 +22,7 @@ export interface AgentBriefingInput {
   formSchema?: FormSchemaReport | null;
   accessibilityTree?: unknown | null;
   brandIdentity?: BrandIdentityReport | null;
+  discoveredSurface?: DiscoveredApiSurfaceReport | null;
 }
 
 /**
@@ -260,6 +262,38 @@ export class AgentBriefing {
       lines.push("  }");
       lines.push("}");
       lines.push('```');
+
+      if (data.reconReport?.securityTokens && data.reconReport.securityTokens.length > 0) {
+        lines.push(``);
+        lines.push(`### 🔍 Linaje y Procedencia de Tokens de Seguridad Detectados:`);
+        lines.push(`| Cabecera / Token | Tipo | Muestra Forense | Procedencia / Fuente Rastreable |`);
+        lines.push(`| :--- | :--- | :--- | :--- |`);
+        data.reconReport.securityTokens.forEach((tok) => {
+          const provDesc = tok.provenance ? `\`${tok.provenance.sourceType}\`: ${tok.provenance.description}` : '*Origen preexistente en cliente*';
+          lines.push(`| \`${tok.headerName}\` | \`${tok.type}\` | \`${tok.sampleValue}\` | ${provDesc} |`);
+        });
+      }
+
+      if (data.reconReport?.legacyServerState) {
+        const legacy = data.reconReport.legacyServerState;
+        lines.push(``);
+        lines.push(`### 🏛️ Estado de Servidor Legacy Detectado (${legacy.frameworkDetected || 'Stateful'}):`);
+        lines.push(`> ⚠️ **ATENCIÓN ARQUITECTÓNICA: REQUIERE ENVÍO DE ESTADO EN PETICIONES POST**`);
+        lines.push(`> Las peticiones POST del portal rechazarán llamadas REST directas si no incluyen los campos de ViewState sincronizados con el servidor.`);
+        lines.push(``);
+        lines.push(`| Campo Requerido | Framework | Muestra Forense | Expresión Regular para Extraer del DOM |`);
+        lines.push(`| :--- | :--- | :--- | :--- |`);
+        legacy.stateFields.forEach((field) => {
+          lines.push(`| **\`${field.fieldName}\`** | \`${field.framework}\` | \`${field.sampleValue}\` | \`${field.domExtractionRegex}\` |`);
+        });
+        if (legacy.hybridBypassRecipe) {
+          lines.push(``);
+          lines.push(`**Receta de Bypass Híbrido (Direct POST con ViewState sin navegar por menús):**`);
+          lines.push('```typescript');
+          lines.push(legacy.hybridBypassRecipe);
+          lines.push('```');
+        }
+      }
     } else {
       lines.push(`- No se dispone de volcado previo de sesión.`);
     }
@@ -337,7 +371,11 @@ export class AgentBriefing {
         const safeUrl = AgentBriefing.redactUrl(ep.url);
         const safePayload = AgentBriefing.redactPayload(ep.requestPayloadSample);
 
-        lines.push(`### [${idx + 1}] \`${ep.method} ${ep.pathname}\``);
+        const opTitle = ep.graphqlOperationName ? ` [GraphQL: ${ep.graphqlOperationName}]` : '';
+        lines.push(`### [${idx + 1}] \`${ep.method} ${ep.pathname}${opTitle}\``);
+        if (ep.graphqlOperationName) {
+          lines.push(`- **Operación GraphQL:** \`${ep.graphqlOperationName}\` (Tipo: \`${ep.graphqlOperationType || 'query'}\`)`);
+        }
         lines.push(`- **URL Base / Endpoint:** \`${safeUrl}\``);
         lines.push(`- **Latencia observada:** ~${ep.averageLatencyMs} ms`);
         lines.push(`- **Consumo directo parametrizado con Playwright APIRequestContext:**`);
@@ -377,6 +415,18 @@ export class AgentBriefing {
         lines.push('```');
         lines.push(``);
       });
+
+      if (data.apiContracts.webSocketsObserved && data.apiContracts.webSocketsObserved.length > 0) {
+        lines.push(``);
+        lines.push(`### ⚡ Canales WebSocket / SSE Auditados en la Sesión`);
+        lines.push(`| Canal WebSocket | Frames Totales | Conectado En | Muestra de Payload / Notificación |`);
+        lines.push(`| :--- | :---: | :--- | :--- |`);
+        data.apiContracts.webSocketsObserved.forEach((ws) => {
+          const sample = ws.sampleFrames.length > 0 ? `\`${ws.sampleFrames[0].payload.slice(0, 60)}...\`` : '*Sin frames capturados*';
+          lines.push(`| \`${ws.url}\` | ${ws.framesCount} | \`${ws.connectedAt}\` | ${sample} |`);
+        });
+        lines.push(``);
+      }
     } else {
       lines.push(`- No se observaron peticiones XHR/Fetch candidatas para bypass de API.`);
     }
@@ -384,8 +434,27 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 7. VENTANAS EMERGENTES / POPUPS
-    lines.push(`## 🪟 7. Detección de Ventanas Emergentes (Popups) y Visores`);
+    // 7. DESCARGAS Y RECURSOS BINARIOS CAPTURADOS
+    const downloads = data.executionSequence?.downloadsCaptured || [];
+    if (downloads.length > 0) {
+      lines.push(`## 📥 7. Descargas y Recursos Binarios Capturados (Bypass Directo sin UI)`);
+      lines.push(`> Se interceptaron **${downloads.length} descargas o archivos binarios** (PDFs, planillas, reportes o blobs).`);
+      lines.push(`> Puedes descargarlos directamente mediante llamadas API sin hacer clic en botones de la interfaz.`);
+      lines.push(``);
+      lines.push(`| Tipo Origen | Nombre Archivo | MIME Type | Acción Causal | Snippet de Descarga Directa |`);
+      lines.push(`| :--- | :--- | :--- | :---: | :--- |`);
+      downloads.forEach((dl) => {
+        const name = dl.suggestedFilename || 'archivo_descargado';
+        const actionRef = dl.associatedActionId ? `\`${dl.associatedActionId}\`` : '*Global*';
+        lines.push(`| \`${dl.sourceType}\` | **\`${name}\`** | \`${dl.mimeType || 'binary'}\` | ${actionRef} | \`${dl.directDownloadSnippet.split('\n')[0]}\` |`);
+      });
+      lines.push(``);
+      lines.push(`---`);
+      lines.push(``);
+    }
+
+    // 8. VENTANAS EMERGENTES / POPUPS
+    lines.push(`## 🪟 8. Detección de Ventanas Emergentes (Popups) y Visores`);
     const popups = data.executionSequence?.popupsDetected || [];
     if (popups.length > 0) {
       lines.push(`> ⚠️ **REGLA ARQUITECTÓNICA CRÍTICA: PROHIBIDO NAVEGAR EN FRÍO A POPUPS/VISORES**`);
@@ -422,8 +491,104 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 8. MATRIZ DE SELECTORES CERTIFICADOS
-    lines.push(`## 🎯 8. Matriz de Selectores Certificados (Nivel EXCELLENT y HIGH)`);
+    // 8. OPORTUNIDADES DE BYPASS API-FIRST DETECTADAS (BUNDLE & REPORT SCHEMA MINING)
+    lines.push(`## 🎯 8. Oportunidades de Bypass API-First Detectadas (Bundle & Report Schema Mining)`);
+    if (
+      data.discoveredSurface &&
+      (data.discoveredSurface.highValueEndpoints.length > 0 ||
+        data.discoveredSurface.satelliteServices.length > 0 ||
+        data.discoveredSurface.reportTemplates.length > 0)
+    ) {
+      const surface = data.discoveredSurface;
+      lines.push(`> 🚀 **DIRECTIVA DE EFICIENCIA: BYPASS DE VISORES Y COMPILACIÓN DIRECTA**`);
+      lines.push(
+        `> El análisis estático de bundles JS y plantillas descubrió **${surface.summary.totalHighValueEndpoints} endpoints de compilación/exportación**, **${surface.summary.totalSatellitesFound} servicio(s) satélites** y **${surface.summary.totalReportTemplatesFound} plantilla(s) de reporte**.`
+      );
+      lines.push(
+        `> Si tu caso de uso requiere generar un PDF o descargar un archivo Excel, **NO automatices el visor por UI ni hagas clics en la barra de herramientas del reporte**. Llama directamente a estos endpoints.`
+      );
+      lines.push(``);
+
+      // A. Servicios Satélites / Multi-Puerto
+      if (surface.satelliteServices.length > 0) {
+        lines.push(`### 🛰️ Servicios Satélites y Puertos Alternativos Descubiertos`);
+        lines.push(`| Origen / Host | Puerto | Rol Inferido | Muestra de Rutas |`);
+        lines.push(`| :--- | :---: | :--- | :--- |`);
+        surface.satelliteServices.forEach((sat) => {
+          const samplePaths = sat.sampleEndpoints.slice(0, 3).map((p) => `\`${p}\``).join(', ') || '*N/A*';
+          lines.push(`| \`${sat.origin}\` | \`${sat.port || 'N/A'}\` | **${sat.inferredRole}** | ${samplePaths} |`);
+        });
+        lines.push(``);
+      }
+
+      // B. Endpoints de Alto Impacto
+      if (surface.highValueEndpoints.length > 0) {
+        lines.push(`### ⚡ Endpoints de Alto Valor para Bypass Directo`);
+        lines.push(`| Categoría | Endpoint | Estado en Sesión | Script Origen | Plantilla Correlacionada |`);
+        lines.push(`| :--- | :--- | :---: | :--- | :--- |`);
+        surface.highValueEndpoints.forEach((ep) => {
+          const statusBadge = ep.executedInLiveSession
+            ? '✅ `EJECUTADO EN VIVO`'
+            : '💡 `LATENTE EN CÓDIGO` (Oportunidad Bypass)';
+          const tplBadge =
+            ep.matchedTemplates && ep.matchedTemplates.length > 0
+              ? `📄 \`${ep.matchedTemplates.join(', ')}\``
+              : '*Ninguna*';
+          lines.push(
+            `| **\`${ep.category}\`** | \`${ep.endpoint}\` | ${statusBadge} | \`${ep.source}\` | ${tplBadge} |`
+          );
+        });
+        lines.push(``);
+
+        const sampleHighVal =
+          surface.highValueEndpoints.find(
+            (e) => e.category === 'PDF_COMPILATION' || e.category === 'EXPORT'
+          ) || surface.highValueEndpoints[0];
+        if (sampleHighVal) {
+          lines.push(`**Ejemplo de invocación directa con \`APIRequestContext\` (Bypass de Interfaz):**`);
+          lines.push('```typescript');
+          lines.push(sampleHighVal.suggestedBypass);
+          lines.push('```');
+          lines.push(``);
+        }
+      }
+
+      // C. Plantillas de Reportes Descubiertas
+      if (surface.reportTemplates.length > 0) {
+        lines.push(`### 📄 Plantillas de Reporte y Esquemas de Datos (DataSources)`);
+        surface.reportTemplates.forEach((tpl) => {
+          lines.push(`#### Plantilla: \`${tpl.templateName}\` (Formato: \`${tpl.format.toUpperCase()}\`)`);
+          if (tpl.url) lines.push(`- **URL / Origen:** \`${tpl.url}\``);
+          if (tpl.correlatedEndpoints.length > 0) {
+            lines.push(
+              `- **Endpoints Correlacionados:** ${tpl.correlatedEndpoints.map((e) => `\`${e}\``).join(', ')}`
+            );
+          }
+          if (tpl.dataSources.length > 0) {
+            lines.push(`- **DataSources / Tablas Requeridas:**`);
+            tpl.dataSources.forEach((ds) => {
+              const cols =
+                ds.columns.length > 0
+                  ? ds.columns.slice(0, 10).map((c) => `\`${c}\``).join(', ')
+                  : '*Sin columnas explícitas*';
+              lines.push(`  - **Tabla \`${ds.name}\`:** Columnas: ${cols}${ds.columns.length > 10 ? '...' : ''}`);
+              if (ds.query) lines.push(`    - *Query:* \`${ds.query.slice(0, 80)}...\``);
+            });
+          }
+          lines.push(``);
+        });
+      }
+    } else {
+      lines.push(
+        `- No se detectaron endpoints de compilación adicionales ni servicios satélites en los bundles.`
+      );
+    }
+    lines.push(``);
+    lines.push(`---`);
+    lines.push(``);
+
+    // 9. MATRIZ DE SELECTORES CERTIFICADOS
+    lines.push(`## 🎯 9. Matriz de Selectores Certificados (Nivel EXCELLENT y HIGH)`);
     if (data.selectorsMap && data.selectorsMap.totalSelectorsAnalyzed > 0) {
       lines.push(`A continuación los selectores con mayor estabilidad evaluados en la página:`);
       lines.push(``);
@@ -444,8 +609,8 @@ export class AgentBriefing {
     lines.push(`---`);
     lines.push(``);
 
-    // 9. SECUENCIA CRONOLÓGICA DE ACCIONES Y SNAPSHOTS DEL DOM
-    lines.push(`## 📸 9. Secuencia de Acciones y Snapshots Forenses del DOM (\`dom-snapshots/\`)`);
+    // 10. SECUENCIA CRONOLÓGICA DE ACCIONES Y SNAPSHOTS DEL DOM
+    lines.push(`## 📸 10. Secuencia de Acciones y Snapshots Forenses del DOM (\`dom-snapshots/\`)`);
     if (data.executionSequence && data.executionSequence.actions.length > 0) {
       const snapCount = data.executionSequence.actions.filter((a) => a.domSnapshotFile).length;
       lines.push(`Se capturaron **${data.executionSequence.actions.length} acciones** cronológicas, de las cuales **${snapCount} cuentan con snapshot HTML completo del DOM**.`);
@@ -454,8 +619,8 @@ export class AgentBriefing {
       lines.push(`> Cada archivo HTML contiene la radiografía limpia del DOM (incluyendo iframes y estado de inputs) en el instante exacto de la acción.`);
       lines.push(`> El elemento que recibió la interacción está etiquetado con: \`data-sk-action-target="true"\`.`);
       lines.push(``);
-      lines.push(`| Paso | Tipo Acción | Elemento / Objetivo | Selector Sugerido | Snapshot DOM |`);
-      lines.push(`| :---: | :--- | :--- | :--- | :--- |`);
+      lines.push(`| Paso | Tipo Acción | Elemento / Objetivo | Selector Sugerido | Peticiones Red Disparadas | Snapshot DOM |`);
+      lines.push(`| :---: | :--- | :--- | :--- | :--- | :--- |`);
 
       data.executionSequence.actions.forEach((act, idx) => {
         const stepNum = idx + 1;
@@ -467,7 +632,25 @@ export class AgentBriefing {
         const locatorStr = act.suggestedLocator ? `\`${act.suggestedLocator}\`` : '*N/A*';
         const snapshotLink = act.domSnapshotFile ? `[\`${act.domSnapshotFile}\`](${act.domSnapshotFile})` : '*Sin snapshot*';
 
-        lines.push(`| ${stepNum} | \`${act.actionType}\` | ${targetDesc} | ${locatorStr} | ${snapshotLink} |`);
+        let triggeredDesc = '*Ninguna*';
+        if (act.triggeredRequests && act.triggeredRequests.length > 0) {
+          triggeredDesc = act.triggeredRequests
+            .slice(0, 2)
+            .map((t) => {
+              let pathStr = t.url;
+              try {
+                pathStr = new URL(t.url).pathname;
+              } catch {}
+              const isDl = t.isDownloadOrBinary ? ' 📥' : '';
+              return `\`${t.method} ${pathStr}\`${isDl}`;
+            })
+            .join(', ');
+          if (act.triggeredRequests.length > 2) {
+            triggeredDesc += ` *(+${act.triggeredRequests.length - 2} más)*`;
+          }
+        }
+
+        lines.push(`| ${stepNum} | \`${act.actionType}\` | ${targetDesc} | ${locatorStr} | ${triggeredDesc} | ${snapshotLink} |`);
       });
     } else {
       lines.push(`- No se registraron acciones interactivas durante la auditoría.`);
